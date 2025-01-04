@@ -6,11 +6,13 @@ type OllamaLLM struct {
 	config BaseLlmConfig
 }
 
-func NewOllamaLLM(config BaseLlmConfig) *OllamaLLM {
-	return &OllamaLLM{config: config}
+func NewOllamaLLM(config map[string]interface{}) LLM {
+	baseConfig := BaseLlmConfig{}
+	mapToStruct(config, &baseConfig)
+	return &OllamaLLM{config: baseConfig}
 }
 
-func (o *OllamaLLM) GenerateResponse(messages []map[string]string, tools []string) (map[string]interface{}, error) {
+func (o *OllamaLLM) GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error) {
 	return nil, errors.New("OllamaLLM.GenerateResponse not implemented")
 }
 

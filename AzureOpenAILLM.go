@@ -6,11 +6,13 @@ type AzureOpenAILLM struct {
 	config BaseLlmConfig
 }
 
-func NewAzureOpenAILLM(config BaseLlmConfig) *AzureOpenAILLM {
-	return &AzureOpenAILLM{config: config}
+func NewAzureOpenAILLM(config map[string]interface{}) LLM {
+	baseConfig := BaseLlmConfig{}
+	mapToStruct(config, &baseConfig)
+	return &AzureOpenAILLM{config: baseConfig}
 }
 
-func (a *AzureOpenAILLM) GenerateResponse(messages []map[string]string, tools []string) (map[string]interface{}, error) {
+func (a *AzureOpenAILLM) GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error) {
 	return nil, errors.New("AzureOpenAILLM.GenerateResponse not implemented")
 }
 

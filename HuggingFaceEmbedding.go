@@ -6,8 +6,10 @@ type HuggingFaceEmbedding struct {
 	config BaseEmbedderConfig
 }
 
-func NewHuggingFaceEmbedding(config BaseEmbedderConfig) *HuggingFaceEmbedding {
-	return &HuggingFaceEmbedding{config: config}
+func NewHuggingFaceEmbedding(config map[string]interface{}) Embedder {
+	baseConfig := BaseEmbedderConfig{}
+	mapToStruct(config, &baseConfig)
+	return &HuggingFaceEmbedding{config: baseConfig}
 }
 
 func (h *HuggingFaceEmbedding) Embed(text string) ([]float64, error) {

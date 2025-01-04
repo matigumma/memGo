@@ -6,8 +6,10 @@ type OpenAIEmbedding struct {
 	config BaseEmbedderConfig
 }
 
-func NewOpenAIEmbedding(config BaseEmbedderConfig) *OpenAIEmbedding {
-	return &OpenAIEmbedding{config: config}
+func NewOpenAIEmbedding(config map[string]interface{}) Embedder {
+	baseConfig := BaseEmbedderConfig{}
+	mapToStruct(config, &baseConfig)
+	return &OpenAIEmbedding{config: baseConfig}
 }
 
 func (o *OpenAIEmbedding) Embed(text string) ([]float64, error) {

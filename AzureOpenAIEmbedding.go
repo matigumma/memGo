@@ -6,8 +6,10 @@ type AzureOpenAIEmbedding struct {
 	config BaseEmbedderConfig
 }
 
-func NewAzureOpenAIEmbedding(config BaseEmbedderConfig) *AzureOpenAIEmbedding {
-	return &AzureOpenAIEmbedding{config: config}
+func NewAzureOpenAIEmbedding(config map[string]interface{}) Embedder {
+	baseConfig := BaseEmbedderConfig{}
+	mapToStruct(config, &baseConfig)
+	return &AzureOpenAIEmbedding{config: baseConfig}
 }
 
 func (a *AzureOpenAIEmbedding) Embed(text string) ([]float64, error) {

@@ -6,14 +6,14 @@ import "fmt"
 type VectorStoreFactory struct{}
 
 // Create - Creates a VectorStore instance based on the provider name and configuration
-func (vsf VectorStoreFactory) Create(providerName string, config VectorStoreProviderConfig) (VectorStore, error) {
+func (vsf VectorStoreFactory) Create(providerName string, config map[string]interface{}) (VectorStore, error) {
 	switch providerName {
 	case "qdrant":
-		return NewQdrant(config.Config), nil
+		return NewQdrant(config), nil
 	case "chroma":
-		return NewChromaDB(config.Config), nil
+		return NewChromaDB(config), nil
 	case "pgvector":
-		return NewPGVector(config.Config), nil
+		return NewPGVector(config), nil
 	default:
 		return nil, fmt.Errorf("unsupported VectorStore provider: %s", providerName)
 	}

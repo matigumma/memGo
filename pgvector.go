@@ -6,7 +6,10 @@ type PGVector struct {
 	config map[string]interface{}
 }
 
-func NewPGVector(config map[string]interface{}) *PGVector {
+//	func NewPGVector(config map[string]interface{}) *PGVector {
+//		return &PGVector{config: config}
+//	}
+func NewPGVector(config map[string]interface{}) VectorStore {
 	return &PGVector{config: config}
 }
 

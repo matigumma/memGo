@@ -10,7 +10,7 @@ func NewAWSBedrockLLM(config BaseLlmConfig) *AWSBedrockLLM {
 	return &AWSBedrockLLM{config: config}
 }
 
-func (a *AWSBedrockLLM) GenerateResponse(messages []map[string]string, tools []string) (map[string]interface{}, error) {
+func (a *AWSBedrockLLM) GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error) {
 	return nil, errors.New("AWSBedrockLLM.GenerateResponse not implemented")
 }
 

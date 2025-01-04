@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -38,4 +39,17 @@ func getUpdateMemoryMessages(existingMemories []map[string]interface{}, memory s
 	return []map[string]string{
 		{"role": "user", "content": prompt},
 	}
+}
+
+// --- Helper function to map a map to a struct ---
+func mapToStruct(config map[string]interface{}, target interface{}) error {
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("error marshaling config: %w", err)
+	}
+	err = json.Unmarshal(configBytes, target)
+	if err != nil {
+		return fmt.Errorf("error unmarshaling config: %w", err)
+	}
+	return nil
 }

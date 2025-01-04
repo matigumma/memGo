@@ -6,11 +6,13 @@ type OpenAILLM struct {
 	config BaseLlmConfig
 }
 
-func NewOpenAILLM(config BaseLlmConfig) *OpenAILLM {
-	return &OpenAILLM{config: config}
+func NewOpenAILLM(config map[string]interface{}) LLM {
+	baseConfig := BaseLlmConfig{}
+	mapToStruct(config, &baseConfig)
+	return &OpenAILLM{config: baseConfig}
 }
 
-func (o *OpenAILLM) GenerateResponse(messages []map[string]string, tools []string) (map[string]interface{}, error) {
+func (o *OpenAILLM) GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error) {
 	return nil, errors.New("OpenAILLM.GenerateResponse not implemented")
 }
 

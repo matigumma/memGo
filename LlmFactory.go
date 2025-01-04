@@ -6,7 +6,7 @@ import "fmt"
 type LlmFactory struct{}
 
 // Create - Creates an LLM instance based on the provider name and configuration
-func (lf LlmFactory) Create(providerName string, config map[string]interface{}) (LLM, error) {
+/* func (lf LlmFactory) Create(providerName string, config map[string]interface{}) (LLM, error) {
 	switch providerName {
 	case "ollama":
 		cfg := BaseLlmConfig{}
@@ -33,5 +33,20 @@ func (lf LlmFactory) Create(providerName string, config map[string]interface{}) 
 		return NewAzureOpenAILLM(BaseLlmConfig{}), nil
 	default:
 		return nil, fmt.Errorf("unsupported Llm provider: %s", providerName)
+	}
+} */
+
+func (lf LlmFactory) Create(providerName string, config map[string]interface{}) (LLM, error) {
+	switch providerName {
+	case "ollama":
+		return NewOllamaLLM(config), nil
+	case "openai":
+		return NewOpenAILLM(config), nil
+	case "together":
+		return NewTogetherLLM(config), nil
+	case "azure_openai":
+		return NewAzureOpenAILLM(config), nil
+	default:
+		return nil, fmt.Errorf("unsupported LLM provider: %s", providerName)
 	}
 }

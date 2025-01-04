@@ -54,23 +54,12 @@ type Embedder interface {
 	// Add other methods as needed
 }
 
-// VectorStore - Interface for Vector Stores (already defined, ensuring it's here for context)
-type VectorStore interface {
-	Insert(vectors [][]float64, ids []string, payloads []map[string]interface{}) error
-	Search(query []float64, limit int, filters map[string]interface{}) ([]SearchResult, error)
-	Get(vectorID string) (*SearchResult, error)
-	List(filters map[string]interface{}, limit int) ([][]SearchResult, error)
-	Update(vectorID string, vector []float64, payload map[string]interface{}) error
-	Delete(vectorID string) error
-	DeleteCol() error
-}
-
 // --- Memory Class ---
 
 // Memory - Corresponds to the Python Memory class
 type Memory struct {
 	config         MemoryConfig
-	embeddingModel EmbedderFactory
+	embeddingModel Embedder
 	vectorStore    VectorStore
 	telemetry      telemetry.AnonymousTelemetry
 	llm            LLM
@@ -88,7 +77,7 @@ func NewMemory(config MemoryConfig) *Memory {
 	if err != nil {
 		log.Fatalf("Error creating vector store: %v", err)
 	}
-	llm, err := LlmFactory{}.Create(config.LLM.Provider, config.LLM.Config)
+	llm, err := LlmFactory{}.Create(config.Llm.Provider, config.Llm.Config)
 	if err != nil {
 		log.Fatalf("Error creating LLM: %v", err)
 	}
@@ -109,9 +98,9 @@ func NewMemory(config MemoryConfig) *Memory {
 		telemetry:      *phtelemetry,
 		llm:            llm,
 		db:             db,
-		collectionName: config.VectorStore.Config.CollectionName,
+		collectionName: config.VectorStore.Config["CollectionName"].(string),
 	}
-	m.telemetry.CaptureEvent("mem0.init", nil)
+	m.telemetry.CaptureEvent("memGo.init", nil)
 	return m
 }
 
@@ -266,10 +255,10 @@ func (m *Memory) Add(data string, userID *string, agentID *string, runID *string
 				"event": trimMemorySuffix(functionName),
 				"data":  functionArgs["data"],
 			})
-			m.telemetry.CaptureEvent("mem0.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
+			m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 		}
 	}
-	m.telemetry.CaptureEvent("mem0.add", nil)
+	m.telemetry.CaptureEvent("memGo.add", nil)
 	return map[string]interface{}{"message": "ok", "details": functionResults}, nil
 }
 
@@ -287,7 +276,7 @@ func (m *Memory) updateMemoryToolWrapper(args map[string]interface{}) (string, e
 
 // Get retrieves a memory by ID
 func (m *Memory) Get(memoryID string) (map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("mem0.get", map[string]interface{}{"memory_id": memoryID})
+	m.telemetry.CaptureEvent("memGo.get", map[string]interface{}{"memory_id": memoryID})
 	memory, err := m.vectorStore.Get(memoryID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting memory from vector store: %w", err)
@@ -339,7 +328,7 @@ func (m *Memory) GetAll(userID *string, agentID *string, runID *string, limit in
 		filters["run_id"] = *runID
 	}
 
-	m.telemetry.CaptureEvent("mem0.get_all", map[string]interface{}{"filters": len(filters), "limit": limit})
+	m.telemetry.CaptureEvent("memGo.get_all", map[string]interface{}{"filters": len(filters), "limit": limit})
 	memoriesList, err := m.vectorStore.List(filters, limit)
 	if err != nil {
 		return nil, fmt.Errorf("error listing memories: %w", err)
@@ -392,7 +381,7 @@ func (m *Memory) Search(query string, userID *string, agentID *string, runID *st
 		filters["run_id"] = *runID
 	}
 
-	m.telemetry.CaptureEvent("mem0.search", map[string]interface{}{"filters": len(filters), "limit": limit})
+	m.telemetry.CaptureEvent("memGo.search", map[string]interface{}{"filters": len(filters), "limit": limit})
 	embeddings, err := m.embeddingModel.Embed(query)
 	if err != nil {
 		return nil, fmt.Errorf("error embedding query: %w", err)
@@ -436,7 +425,7 @@ func (m *Memory) Search(query string, userID *string, agentID *string, runID *st
 
 // Update updates a memory by ID
 func (m *Memory) Update(memoryID string, data string) (map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("mem0.update", map[string]interface{}{"memory_id": memoryID})
+	m.telemetry.CaptureEvent("memGo.update", map[string]interface{}{"memory_id": memoryID})
 	_, err := m.updateMemoryTool(memoryID, data)
 	if err != nil {
 		return nil, err
@@ -446,8 +435,8 @@ func (m *Memory) Update(memoryID string, data string) (map[string]interface{}, e
 
 // Delete deletes a memory by ID
 func (m *Memory) Delete(memoryID string) (map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("mem0.delete", map[string]interface{}{"memory_id": memoryID})
-	err := m.deleteMemoryTool(map[string]interface{}{"memory_id": memoryID})
+	m.telemetry.CaptureEvent("memGo.delete", map[string]interface{}{"memory_id": memoryID})
+	_, err := m.deleteMemoryTool(map[string]interface{}{"memory_id": memoryID})
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +460,7 @@ func (m *Memory) DeleteAll(userID *string, agentID *string, runID *string) (map[
 		return nil, errors.New("at least one filter is required to delete all memories. If you want to delete all memories, use the `Reset()` method")
 	}
 
-	m.telemetry.CaptureEvent("mem0.delete_all", map[string]interface{}{"filters": len(filters)})
+	m.telemetry.CaptureEvent("memGo.delete_all", map[string]interface{}{"filters": len(filters)})
 	memoriesList, err := m.vectorStore.List(filters, -1) // Get all matching memories
 	if err != nil {
 		return nil, fmt.Errorf("error listing memories for deletion: %w", err)
@@ -479,7 +468,7 @@ func (m *Memory) DeleteAll(userID *string, agentID *string, runID *string) (map[
 
 	for _, memories := range memoriesList {
 		for _, memory := range memories {
-			err = m.deleteMemoryTool(map[string]interface{}{"memory_id": memory.ID})
+			_, err = m.deleteMemoryTool(map[string]interface{}{"memory_id": memory.ID})
 			if err != nil {
 				log.Printf("Error deleting memory %s: %v", memory.ID, err)
 				// Consider whether to continue or return an error here
@@ -491,7 +480,7 @@ func (m *Memory) DeleteAll(userID *string, agentID *string, runID *string) (map[
 
 // History gets the history of changes for a memory by ID
 func (m *Memory) History(memoryID string) ([]map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("mem0.history", map[string]interface{}{"memory_id": memoryID})
+	m.telemetry.CaptureEvent("memGo.history", map[string]interface{}{"memory_id": memoryID})
 	return m.db.GetHistory(memoryID)
 }
 
@@ -529,7 +518,12 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("error inserting into vector store: %w", err)
 	}
 
-	err = m.db.AddHistory(memoryID, nil, data, "ADD", metadata["created_at"].(string), "")
+	createdAt, ok := metadata["created_at"].(string)
+	if !ok {
+		return "", errors.New("created_at not found or not a string")
+	}
+
+	err = m.db.AddHistory(memoryID, nil, data, "ADD", &createdAt, nil, 0)
 	if err != nil {
 		log.Printf("Error adding history: %v", err) // Non-critical error
 	}
@@ -575,7 +569,7 @@ func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) 
 		return "", fmt.Errorf("error updating vector store: %w", err)
 	}
 
-	err = m.db.AddHistory(memoryID, prevValue, data, "UPDATE", newMetadata["created_at"].(string), newMetadata["updated_at"].(string))
+	err = m.db.AddHistory(memoryID, &prevValue, data, "UPDATE", newMetadata["created_at"].(*string), newMetadata["updated_at"].(*string), 0)
 	if err != nil {
 		log.Printf("Error adding history: %v", err) // Non-critical error
 	}
@@ -626,7 +620,7 @@ func (m *Memory) Reset() error {
 	if err != nil {
 		return fmt.Errorf("error resetting database: %w", err)
 	}
-	m.telemetry.CaptureEvent("mem0.reset", nil)
+	m.telemetry.CaptureEvent("memGo.reset", nil)
 	return nil
 }
 

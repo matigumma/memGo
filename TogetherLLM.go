@@ -6,11 +6,13 @@ type TogetherLLM struct {
 	config BaseLlmConfig
 }
 
-func NewTogetherLLM(config BaseLlmConfig) *TogetherLLM {
-	return &TogetherLLM{config: config}
+func NewTogetherLLM(config map[string]interface{}) LLM {
+	baseConfig := BaseLlmConfig{}
+	mapToStruct(config, &baseConfig)
+	return &TogetherLLM{config: baseConfig}
 }
 
-func (t *TogetherLLM) GenerateResponse(messages []map[string]string, tools []string) (map[string]interface{}, error) {
+func (t *TogetherLLM) GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error) {
 	return nil, errors.New("TogetherLLM.GenerateResponse not implemented")
 }
 

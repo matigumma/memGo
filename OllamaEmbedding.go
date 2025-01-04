@@ -6,8 +6,10 @@ type OllamaEmbedding struct {
 	config BaseEmbedderConfig
 }
 
-func NewOllamaEmbedding(config BaseEmbedderConfig) *OllamaEmbedding {
-	return &OllamaEmbedding{config: config}
+func NewOllamaEmbedding(config map[string]interface{}) Embedder {
+	baseConfig := BaseEmbedderConfig{}
+	mapToStruct(config, &baseConfig)
+	return &OllamaEmbedding{config: baseConfig}
 }
 
 func (o *OllamaEmbedding) Embed(text string) ([]float64, error) {

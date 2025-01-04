@@ -6,7 +6,10 @@ type Qdrant struct {
 	config map[string]interface{}
 }
 
-func NewQdrant(config map[string]interface{}) *Qdrant {
+//	func NewQdrant(config map[string]interface{}) *Qdrant {
+//		return &Qdrant{config: config}
+//	}
+func NewQdrant(config map[string]interface{}) VectorStore {
 	return &Qdrant{config: config}
 }
 

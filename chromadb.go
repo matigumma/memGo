@@ -6,7 +6,10 @@ type ChromaDB struct {
 	config map[string]interface{}
 }
 
-func NewChromaDB(config map[string]interface{}) *ChromaDB {
+//	func NewChromaDB(config map[string]interface{}) *ChromaDB {
+//		return &ChromaDB{config: config}
+//	}
+func NewChromaDB(config map[string]interface{}) VectorStore {
 	return &ChromaDB{config: config}
 }
 
