@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/matigumma/memGo/sqlitemanager"
 	"github.com/matigumma/memGo/telemetry"
+	"github.com/tmc/langchaingo/llms"
 )
 
 // --- tools
@@ -42,11 +44,13 @@ type SearchResult struct {
 }
 
 // LLM - Interface for LLMs (already defined, ensuring it's here for context)
-type LLM interface {
-	GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error)
-	GenerateResponseWithoutTools(messages []map[string]string) (string, error)
-	// Add other methods as needed
-}
+type LLM interface{}
+
+// type LLM interface {
+// 	GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error)
+// 	GenerateResponseWithoutTools(messages []map[string]string) (string, error)
+// 	// Add other methods as needed
+// }
 
 // Embedder - Interface for Embedders (already defined, ensuring it's here for context)
 type Embedder interface {
@@ -61,7 +65,7 @@ type Memory struct {
 	config         MemoryConfig
 	embeddingModel Embedder
 	vectorStore    VectorStore
-	telemetry      telemetry.AnonymousTelemetry
+	telemetry      *telemetry.AnonymousTelemetry
 	llm            LLM
 	db             *sqlitemanager.SQLiteManager
 	collectionName string
@@ -86,21 +90,26 @@ func NewMemory(config MemoryConfig) *Memory {
 		log.Fatalf("Error creating database: %v", err)
 	}
 
-	phtelemetry, pherr := telemetry.NewAnonymousTelemetry("phc_eCRS68Q2koejazio0Umv93pwmGfwCH4uCa0dh1brRsI", "https://us.i.posthog.com", nil, nil)
-	if pherr != nil {
-		log.Fatalf("Error initializing telemetry: %v", pherr)
-	}
+	// phtelemetry, pherr := telemetry.NewAnonymousTelemetry("phc_eCRS68Q2koejazio0Umv93pwmGfwCH4uCa0dh1brRsI", "https://us.i.posthog.com", nil, nil)
+	// if pherr != nil {
+	// 	log.Fatalf("Error initializing telemetry: %v", pherr)
+	// }
 
 	m := &Memory{
-		config:         config,
-		embeddingModel: embedder,
-		vectorStore:    vectorStore,
-		telemetry:      *phtelemetry,
-		llm:            llm,
-		db:             db,
-		collectionName: config.VectorStore.Config["CollectionName"].(string),
+		//customPrompt: string //self.config.custom_prompt ?
+		config:         config,      //MemoryConfig
+		embeddingModel: embedder,    //EmbedderFactory
+		vectorStore:    vectorStore, //VectorStoreFactory
+		llm:            llm,         //LlmFactory
+		db:             db,          //SQLiteManager
+		telemetry:      nil,         //*phtelemetry,
+		collectionName: "",
+		// collectionName: config.VectorStore.Config["CollectionName"],
 	}
-	m.telemetry.CaptureEvent("memGo.init", nil)
+
+	//v1.1 MemoryGraph?
+
+	// m.telemetry.CaptureEvent("memGo.init", nil)
 	return m
 }
 
@@ -152,10 +161,14 @@ func (m *Memory) Add(data string, userID *string, agentID *string, runID *string
 	}
 	formattedPrompt := fmt.Sprintf(currentPrompt, data, metadata)
 
-	extractedMemories, err := m.llm.GenerateResponseWithoutTools([]map[string]string{
-		{"role": "system", "content": "You are an expert at deducing facts, preferences and memories from unstructured text."},
-		{"role": "user", "content": formattedPrompt},
-	})
+	ctx := context.Background()
+
+	inputMessages := []llms.MessageContent{}
+
+	inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeSystem, "You are an expert at deducing facts, preferences and memories from unstructured text."))
+	inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeHuman, formattedPrompt))
+
+	extractedMemories, err := m.llm.GenerateContent(ctx, inputMessages)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
@@ -255,10 +268,10 @@ func (m *Memory) Add(data string, userID *string, agentID *string, runID *string
 				"event": trimMemorySuffix(functionName),
 				"data":  functionArgs["data"],
 			})
-			m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
+			// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 		}
 	}
-	m.telemetry.CaptureEvent("memGo.add", nil)
+	// m.telemetry.CaptureEvent("memGo.add", nil)
 	return map[string]interface{}{"message": "ok", "details": functionResults}, nil
 }
 
@@ -276,7 +289,7 @@ func (m *Memory) updateMemoryToolWrapper(args map[string]interface{}) (string, e
 
 // Get retrieves a memory by ID
 func (m *Memory) Get(memoryID string) (map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("memGo.get", map[string]interface{}{"memory_id": memoryID})
+	// m.telemetry.CaptureEvent("memGo.get", map[string]interface{}{"memory_id": memoryID})
 	memory, err := m.vectorStore.Get(memoryID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting memory from vector store: %w", err)
@@ -328,7 +341,7 @@ func (m *Memory) GetAll(userID *string, agentID *string, runID *string, limit in
 		filters["run_id"] = *runID
 	}
 
-	m.telemetry.CaptureEvent("memGo.get_all", map[string]interface{}{"filters": len(filters), "limit": limit})
+	// m.telemetry.CaptureEvent("memGo.get_all", map[string]interface{}{"filters": len(filters), "limit": limit})
 	memoriesList, err := m.vectorStore.List(filters, limit)
 	if err != nil {
 		return nil, fmt.Errorf("error listing memories: %w", err)
@@ -381,7 +394,7 @@ func (m *Memory) Search(query string, userID *string, agentID *string, runID *st
 		filters["run_id"] = *runID
 	}
 
-	m.telemetry.CaptureEvent("memGo.search", map[string]interface{}{"filters": len(filters), "limit": limit})
+	// m.telemetry.CaptureEvent("memGo.search", map[string]interface{}{"filters": len(filters), "limit": limit})
 	embeddings, err := m.embeddingModel.Embed(query)
 	if err != nil {
 		return nil, fmt.Errorf("error embedding query: %w", err)
@@ -425,7 +438,7 @@ func (m *Memory) Search(query string, userID *string, agentID *string, runID *st
 
 // Update updates a memory by ID
 func (m *Memory) Update(memoryID string, data string) (map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("memGo.update", map[string]interface{}{"memory_id": memoryID})
+	// m.telemetry.CaptureEvent("memGo.update", map[string]interface{}{"memory_id": memoryID})
 	_, err := m.updateMemoryTool(memoryID, data)
 	if err != nil {
 		return nil, err
@@ -435,7 +448,7 @@ func (m *Memory) Update(memoryID string, data string) (map[string]interface{}, e
 
 // Delete deletes a memory by ID
 func (m *Memory) Delete(memoryID string) (map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("memGo.delete", map[string]interface{}{"memory_id": memoryID})
+	// m.telemetry.CaptureEvent("memGo.delete", map[string]interface{}{"memory_id": memoryID})
 	_, err := m.deleteMemoryTool(map[string]interface{}{"memory_id": memoryID})
 	if err != nil {
 		return nil, err
@@ -460,7 +473,7 @@ func (m *Memory) DeleteAll(userID *string, agentID *string, runID *string) (map[
 		return nil, errors.New("at least one filter is required to delete all memories. If you want to delete all memories, use the `Reset()` method")
 	}
 
-	m.telemetry.CaptureEvent("memGo.delete_all", map[string]interface{}{"filters": len(filters)})
+	// m.telemetry.CaptureEvent("memGo.delete_all", map[string]interface{}{"filters": len(filters)})
 	memoriesList, err := m.vectorStore.List(filters, -1) // Get all matching memories
 	if err != nil {
 		return nil, fmt.Errorf("error listing memories for deletion: %w", err)
@@ -480,7 +493,7 @@ func (m *Memory) DeleteAll(userID *string, agentID *string, runID *string) (map[
 
 // History gets the history of changes for a memory by ID
 func (m *Memory) History(memoryID string) ([]map[string]interface{}, error) {
-	m.telemetry.CaptureEvent("memGo.history", map[string]interface{}{"memory_id": memoryID})
+	// m.telemetry.CaptureEvent("memGo.history", map[string]interface{}{"memory_id": memoryID})
 	return m.db.GetHistory(memoryID)
 }
 
@@ -620,11 +633,32 @@ func (m *Memory) Reset() error {
 	if err != nil {
 		return fmt.Errorf("error resetting database: %w", err)
 	}
-	m.telemetry.CaptureEvent("memGo.reset", nil)
+	// m.telemetry.CaptureEvent("memGo.reset", nil)
 	return nil
 }
 
 // Chat - Placeholder
 func (m *Memory) Chat(query string) error {
 	return errors.New("chat function not implemented yet")
+}
+
+func main() {
+	mc := NewMemoryConfig()
+
+	m := NewMemory(mc)
+
+	userId := uuid.New().String()
+
+	res, err := m.Add("hello world", &userId, nil, nil, nil, nil, nil)
+	if err != nil {
+		log.Fatalf("Error adding memory: %v", err)
+	}
+	fmt.Printf("Memory ID: %+v\n", res)
+
+	search, err := m.Search("hello", &userId, nil, nil, 5, nil)
+	if err != nil {
+		log.Fatalf("Error searching memory: %v", err)
+	}
+	fmt.Printf("Search results: %+v\n", search)
+
 }

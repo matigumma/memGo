@@ -26,6 +26,7 @@ type EmbedderFactory struct{}
 // }
 
 func (ef EmbedderFactory) Create(providerName string, config map[string]interface{}) (Embedder, error) {
+	fmt.Println("EmbedderFactory.Create called with providerName:", providerName, "and config:", config)
 	switch providerName {
 	case "openai":
 		return NewOpenAIEmbedding(config), nil

@@ -12,11 +12,12 @@ type MemoryConfig struct {
 func NewMemoryConfig() MemoryConfig {
 	return MemoryConfig{
 		VectorStore: VectorStoreConfig{
-			// Provider options: "openai", "ollama", "groq", "together", "aws_bedrock", "litellm", "azure_openai"
-			Provider: "openai",
+			// Provider options: "qdrant", "chroma", "pgvector"
+			Provider: "qdrant",
 			Config:   map[string]interface{}{},
 		},
 		Llm: LlmConfig{
+			//Provider of the LLM (e.g., 'ollama', 'openai')
 			Provider: "openai",
 			Config:   map[string]interface{}{},
 		},
@@ -25,7 +26,7 @@ func NewMemoryConfig() MemoryConfig {
 			Provider: "openai",
 			Config:   map[string]interface{}{},
 		},
-		HistoryDBPath: "./history.db",
+		HistoryDBPath: "./history.db", //Path to the history database
 	}
 }
 

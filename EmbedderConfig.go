@@ -17,6 +17,14 @@ type EmbedderConfig struct {
 	Config   map[string]interface{} `json:"config,omitempty"`
 }
 
+// NewEmbedderConfig creates a new EmbedderConfig with default values
+func NewEmbedderConfig() *EmbedderConfig {
+	return &EmbedderConfig{
+		Provider: "openai",
+		Config:   make(map[string]interface{}),
+	}
+}
+
 // ValidateConfig validates the EmbedderConfig
 func (ec *EmbedderConfig) ValidateConfig() error {
 	switch ec.Provider {
