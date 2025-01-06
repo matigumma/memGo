@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/tmc/langchaingo/llms"
 )
 
 func mergeMaps(m1, m2 map[string]interface{}) map[string]interface{} {
@@ -34,11 +36,9 @@ func getUpdateMemoryPrompt(existingMemories []map[string]interface{}, memory str
 }
 
 // getUpdateMemoryMessages generates the messages for the LLM
-func getUpdateMemoryMessages(existingMemories []map[string]interface{}, memory string) []map[string]string {
+func getUpdateMemoryMessages(existingMemories []map[string]interface{}, memory string) llms.MessageContent {
 	prompt := getUpdateMemoryPrompt(existingMemories, memory, UPDATE_MEMORY_PROMPT)
-	return []map[string]string{
-		{"role": "user", "content": prompt},
-	}
+	return llms.TextParts(llms.ChatMessageTypeHuman, prompt)
 }
 
 // --- Helper function to map a map to a struct ---

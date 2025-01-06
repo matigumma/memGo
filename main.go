@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -44,13 +43,13 @@ type SearchResult struct {
 }
 
 // LLM - Interface for LLMs (already defined, ensuring it's here for context)
-type LLM interface{}
+// type LLM interface{}
 
-// type LLM interface {
-// 	GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error)
-// 	GenerateResponseWithoutTools(messages []map[string]string) (string, error)
-// 	// Add other methods as needed
-// }
+type LLM interface {
+	GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool) (interface{}, error)
+	// GenerateResponseWithoutTools(messages []map[string]string) (string, error)
+	// Add other methods as needed
+}
 
 // Embedder - Interface for Embedders (already defined, ensuring it's here for context)
 type Embedder interface {
@@ -129,19 +128,30 @@ func FromConfig(configMap map[string]interface{}) (*Memory, error) {
 	return NewMemory(config), nil
 }
 
-// Add creates a new memory
-func (m *Memory) Add(data string, userID *string, agentID *string, runID *string, metadata map[string]interface{}, filters map[string]interface{}, prompt *string) (map[string]interface{}, error) {
+// Add creates a new memory.
+// the system extracts relevant facts and preferences and stores it across data stores:
+// a vector database, a key-value database, and a graph database
+func (m *Memory) Add(
+	data string, // Messages to store in the memory. TODO: todo ver de manejar como un array de mensajes tambien
+	userID *string, // ID of the user creating the memory. Defaults nil.
+	agentID *string, // ID of the agent creating the memory. Defaults nil.
+	runID *string, // ID of the run creating the memory. Defaults nil.
+	metadata map[string]interface{}, // Metadata to store with the memory. Defaults nil
+	filters map[string]interface{}, // Filters to apply to the search. Defaults nil
+	prompt *string, // Prompt to use for memory deduction. Defaults nil.
+) (map[string]interface{}, error) {
+
+	// creo mapa de metadatos si no se pasa por parametro
 	if metadata == nil {
 		metadata = make(map[string]interface{})
 	}
-	embeddings, err := m.embeddingModel.Embed(data)
-	if err != nil {
-		return nil, fmt.Errorf("error embedding data: %w", err)
-	}
 
+	// creo mapa de filtros si no se pasa por parametro
 	if filters == nil {
 		filters = make(map[string]interface{})
 	}
+
+	// agrego filtros y metadatos
 	if userID != nil {
 		filters["user_id"] = *userID
 		metadata["user_id"] = *userID
@@ -155,25 +165,58 @@ func (m *Memory) Add(data string, userID *string, agentID *string, runID *string
 		metadata["run_id"] = *runID
 	}
 
-	currentPrompt := MEMORY_DEDUCTION_PROMPT
+	// 1. check if at least one of userID, agentID, or runID is present
+	if userID == nil && agentID == nil && runID == nil {
+		return nil, errors.New("error: missing parameters, at least one of userID, agentID, or runID is required")
+	}
+
+	// en este paso prepara la ejecucion asincrona de la deduccion de la memoria en el vectorstore
+
+	// create embeddings for the data
+	embeddings, err := m.embeddingModel.Embed(data)
+	if err != nil {
+		return nil, fmt.Errorf("error embedding data: %w", err)
+	}
+
+	// deduccion de factos en el imput del usuario q valgan la pena
+	currentPrompt := MEMORY_DEDUCTION_PROMPT // OJO ESTA VERSION ES SUPER REDUCIDA.. dejo en prompts el original
 	if prompt != nil {
+		// uso el prompt del usuario si lo pasa
 		currentPrompt = *prompt
 	}
 	formattedPrompt := fmt.Sprintf(currentPrompt, data, metadata)
-
-	ctx := context.Background()
 
 	inputMessages := []llms.MessageContent{}
 
 	inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeSystem, "You are an expert at deducing facts, preferences and memories from unstructured text."))
 	inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeHuman, formattedPrompt))
 
-	extractedMemories, err := m.llm.GenerateContent(ctx, inputMessages)
+	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
+	//new_retrieved_facts
+	extractedMemories, err := m.llm.GenerateResponse(inputMessages, nil, true)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
-	log.Printf("Extracted memories: %s", extractedMemories)
 
+	// esto deberia imprimir un json.. creo que asi seria { "facts": [{...}, {...}] }
+	log.Printf("Extracted factos: %+v \n", extractedMemories)
+
+	var newRetrievedFacts []interface{}
+	extractedMemoriesStr, ok := extractedMemories.(string)
+	if !ok {
+		log.Printf("Error: extractedMemories is not a string")
+		newRetrievedFacts = []interface{}{}
+	} else {
+		err = json.Unmarshal([]byte(extractedMemoriesStr), &newRetrievedFacts)
+		if err != nil {
+			log.Printf("Error in newRetrievedFacts: %v", err)
+			newRetrievedFacts = []interface{}{}
+		}
+	}
+
+	log.Printf("RetrievedFacts json factos: %+v \n", newRetrievedFacts)
+
+	// 3. searches the vector store for existing memories similar to the new facts and retrieves their IDs and text
 	existingMemoriesRaw, err := m.vectorStore.Search(embeddings, 5, filters)
 	if err != nil {
 		return nil, fmt.Errorf("error searching existing memories: %w", err)
@@ -201,15 +244,23 @@ func (m *Memory) Add(data string, userID *string, agentID *string, runID *string
 	}
 	log.Printf("Total existing memories: %d", len(existingMemories))
 
-	messages := getUpdateMemoryMessages(serializedExistingMemories, extractedMemories)
+	messages := getUpdateMemoryMessages(serializedExistingMemories, newRetrievedFacts)
 
 	tools := []Tool{ADD_MEMORY_TOOL, UPDATE_MEMORY_TOOL, DELETE_MEMORY_TOOL}
-	response, err := m.llm.GenerateResponse(messages, tools)
+
+	// 4. generates another prompt to update the memories based on the new facts and sends it to the LLM
+	response, err := m.llm.GenerateResponse([]llms.MessageContent{messages}, tools, false)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response with tools: %w", err)
 	}
 
-	toolCalls, ok := response["tool_calls"].([]interface{})
+	responseMap, ok := response.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("error: response is not a map[string]interface{}")
+	}
+
+	// 5. processes the LLM's response, which contains actions to add, update, or delete memories
+	toolCalls, ok := responseMap["tool_calls"].([]interface{})
 	functionResults := make([]map[string]interface{}, 0)
 
 	if ok {
@@ -257,6 +308,7 @@ func (m *Memory) Add(data string, userID *string, agentID *string, runID *string
 				functionArgs["metadata"] = metadata
 			}
 
+			// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
 			functionResultID, err := functionToCall(functionArgs)
 			if err != nil {
 				log.Printf("Error calling function %s: %v", functionName, err)
@@ -271,6 +323,8 @@ func (m *Memory) Add(data string, userID *string, agentID *string, runID *string
 			// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 		}
 	}
+	// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
+
 	// m.telemetry.CaptureEvent("memGo.add", nil)
 	return map[string]interface{}{"message": "ok", "details": functionResults}, nil
 }
@@ -498,6 +552,7 @@ func (m *Memory) History(memoryID string) ([]map[string]interface{}, error) {
 }
 
 func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
+	// 1. extracts the data and metadata from the args map
 	data, ok := args["data"].(string)
 	if !ok {
 		return "", errors.New("data not found or not a string")
@@ -508,6 +563,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 	}
 	log.Printf("Creating memory with data=%s", data)
 
+	// 2. embeds the data using the embeddingModel
 	embeddings, err := m.embeddingModel.Embed(data)
 	if err != nil {
 		return "", fmt.Errorf("error embedding data: %w", err)
@@ -526,6 +582,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 	}
 	metadata["created_at"] = time.Now().In(pacific).Format(time.RFC3339)
 
+	// 3. inserts the embeddings, memoryID, and metadata into the vectorStore
 	err = m.vectorStore.Insert([][]float64{embeddings}, []string{memoryID}, []map[string]interface{}{metadata})
 	if err != nil {
 		return "", fmt.Errorf("error inserting into vector store: %w", err)
@@ -536,6 +593,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 		return "", errors.New("created_at not found or not a string")
 	}
 
+	// 4. adds a history entry to the db indicating that a memory with the given memoryID was added
 	err = m.db.AddHistory(memoryID, nil, data, "ADD", &createdAt, nil, 0)
 	if err != nil {
 		log.Printf("Error adding history: %v", err) // Non-critical error

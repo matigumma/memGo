@@ -1,6 +1,10 @@
 package main
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/tmc/langchaingo/llms"
+)
 
 type OllamaLLM struct {
 	config BaseLlmConfig
@@ -12,7 +16,7 @@ func NewOllamaLLM(config map[string]interface{}) LLM {
 	return &OllamaLLM{config: baseConfig}
 }
 
-func (o *OllamaLLM) GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error) {
+func (o *OllamaLLM) GenerateResponse(messages []llms.MessageContent, tools []Tool) (interface{}, error) {
 	return nil, errors.New("OllamaLLM.GenerateResponse not implemented")
 }
 

@@ -1,8 +1,10 @@
 package main
 
+import "github.com/tmc/langchaingo/llms"
+
 var ADD_MEMORY_TOOL = Tool{
 	Type: "function",
-	Function: &FunctionDefinition{
+	Function: &llms.FunctionDefinition{
 		Name:        "add_memory",
 		Description: "Add a memory",
 		Parameters: map[string]interface{}{
@@ -20,7 +22,7 @@ var ADD_MEMORY_TOOL = Tool{
 
 var UPDATE_MEMORY_TOOL = Tool{
 	Type: "function",
-	Function: &FunctionDefinition{
+	Function: &llms.FunctionDefinition{
 		Name:        "update_memory",
 		Description: "Update memory provided ID and data",
 		Parameters: map[string]interface{}{
@@ -42,7 +44,7 @@ var UPDATE_MEMORY_TOOL = Tool{
 
 var DELETE_MEMORY_TOOL = Tool{
 	Type: "function",
-	Function: &FunctionDefinition{
+	Function: &llms.FunctionDefinition{
 		Name:        "delete_memory",
 		Description: "Delete memory by memory_id",
 		Parameters: map[string]interface{}{

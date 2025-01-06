@@ -1,6 +1,10 @@
 package main
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/tmc/langchaingo/llms"
+)
 
 type AzureOpenAILLM struct {
 	config BaseLlmConfig
@@ -12,7 +16,7 @@ func NewAzureOpenAILLM(config map[string]interface{}) LLM {
 	return &AzureOpenAILLM{config: baseConfig}
 }
 
-func (a *AzureOpenAILLM) GenerateResponse(messages []map[string]string, tools []Tool) (map[string]interface{}, error) {
+func (a *AzureOpenAILLM) GenerateResponse(messages []llms.MessageContent, tools []Tool) (interface{}, error) {
 	return nil, errors.New("AzureOpenAILLM.GenerateResponse not implemented")
 }
 
