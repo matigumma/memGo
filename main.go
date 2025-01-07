@@ -47,7 +47,7 @@ type SearchResult struct {
 // type LLM interface{}
 
 type LLM interface {
-	GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool) (interface{}, error)
+	GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool, toolChoice string) (interface{}, error)
 	// GenerateResponseWithoutTools(messages []map[string]string) (string, error)
 	// Add other methods as needed
 }
@@ -210,139 +210,139 @@ func (m *Memory) Add(
 	*/
 	log.Printf("Extracted factos: %+v \n", extractedMemories)
 	/* ============END chain.MEMORY_DEDUCTION agent=============== */
-
-	var newRetrievedFacts []interface{}
-	extractedMemoriesStr, ok := extractedMemories.(string)
-	if !ok {
-		log.Printf("Error: extractedMemories is not a string")
-		newRetrievedFacts = []interface{}{}
-	} else {
-		err = json.Unmarshal([]byte(extractedMemoriesStr), &newRetrievedFacts)
-		if err != nil {
-			log.Printf("Error in newRetrievedFacts: %v", err)
+	/*
+		var newRetrievedFacts []interface{}
+		extractedMemoriesStr, ok := extractedMemories.(string)
+		if !ok {
+			log.Printf("Error: extractedMemories is not a string")
 			newRetrievedFacts = []interface{}{}
-		}
-	}
-
-	log.Printf("RetrievedFacts json factos: %+v \n", newRetrievedFacts)
-
-	// 3. searches the vector store for existing memories similar to the new facts and retrieves their IDs and text
-	// create embeddings for the data
-	embeddings, err := m.embeddingModel.Embed(data)
-	if err != nil {
-		return nil, fmt.Errorf("error embedding data: %w", err)
-	}
-
-	existingMemoriesRaw, err := m.vectorStore.Search(embeddings, 5, filters)
-	if err != nil {
-		return nil, fmt.Errorf("error searching existing memories: %w", err)
-	}
-
-	existingMemories := make([]MemoryItem, len(existingMemoriesRaw))
-	for i, mem := range existingMemoriesRaw {
-		memoryItem := MemoryItem{
-			ID:       mem.ID,
-			Score:    &mem.Score,
-			Metadata: mem.Payload,
-			Memory:   mem.Payload["data"].(string), // Assuming "data" is always a string
-		}
-		existingMemories[i] = memoryItem
-	}
-
-	serializedExistingMemories := make([]map[string]interface{}, len(existingMemories))
-	for i, item := range existingMemories {
-		serializedItem := map[string]interface{}{
-			"id":     item.ID,
-			"memory": item.Memory,
-			"score":  item.Score,
-		}
-		serializedExistingMemories[i] = serializedItem
-	}
-	log.Printf("Total existing memories: %d", len(existingMemories))
-
-	messages := getUpdateMemoryMessages(serializedExistingMemories, newRetrievedFacts)
-
-	tools := []Tool{ADD_MEMORY_TOOL, UPDATE_MEMORY_TOOL, DELETE_MEMORY_TOOL}
-
-	// 4. generates another prompt to update the memories based on the new facts and sends it to the LLM
-	response, err := m.llm.GenerateResponse([]llms.MessageContent{messages}, tools, false)
-	if err != nil {
-		return nil, fmt.Errorf("error generating response with tools: %w", err)
-	}
-
-	responseMap, ok := response.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("error: response is not a map[string]interface{}")
-	}
-
-	// 5. processes the LLM's response, which contains actions to add, update, or delete memories
-	toolCalls, ok := responseMap["tool_calls"].([]interface{})
-	functionResults := make([]map[string]interface{}, 0)
-
-	if ok {
-		availableFunctions := map[string]func(map[string]interface{}) (string, error){
-			"add_memory":    m.createMemoryTool,
-			"update_memory": m.updateMemoryToolWrapper,
-			"delete_memory": m.deleteMemoryTool,
-		}
-
-		for _, toolCallRaw := range toolCalls {
-			toolCall, ok := toolCallRaw.(map[string]interface{})
-			if !ok {
-				log.Printf("Warning: Unexpected tool_call format: %+v", toolCallRaw)
-				continue
-			}
-
-			functionName, ok := toolCall["name"].(string)
-			if !ok {
-				log.Printf("Warning: Function name not found or not a string in tool_call: %+v", toolCall)
-				continue
-			}
-
-			functionToCall, ok := availableFunctions[functionName]
-			if !ok {
-				log.Printf("Warning: Function %s not found in available functions", functionName)
-				continue
-			}
-
-			argumentsRaw, ok := toolCall["arguments"].(string)
-			if !ok {
-				log.Printf("Warning: Arguments not found or not a string in tool_call: %+v", toolCall)
-				continue
-			}
-
-			var functionArgs map[string]interface{}
-			err = json.Unmarshal([]byte(argumentsRaw), &functionArgs)
+		} else {
+			err = json.Unmarshal([]byte(extractedMemoriesStr), &newRetrievedFacts)
 			if err != nil {
-				log.Printf("Error unmarshaling function arguments: %v", err)
-				continue
+				log.Printf("Error in newRetrievedFacts: %v", err)
+				newRetrievedFacts = []interface{}{}
 			}
-
-			log.Printf("[openai_func] func: %s, args: %+v", functionName, functionArgs)
-
-			if functionName == "add_memory" || functionName == "update_memory" {
-				functionArgs["metadata"] = metadata
-			}
-
-			// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
-			functionResultID, err := functionToCall(functionArgs)
-			if err != nil {
-				log.Printf("Error calling function %s: %v", functionName, err)
-				continue
-			}
-
-			functionResults = append(functionResults, map[string]interface{}{
-				"id":    functionResultID,
-				"event": trimMemorySuffix(functionName),
-				"data":  functionArgs["data"],
-			})
-			// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 		}
-	}
-	// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
 
+		log.Printf("RetrievedFacts json factos: %+v \n", newRetrievedFacts)
+
+		// 3. searches the vector store for existing memories similar to the new facts and retrieves their IDs and text
+		// create embeddings for the data
+		embeddings, err := m.embeddingModel.Embed(data)
+		if err != nil {
+			return nil, fmt.Errorf("error embedding data: %w", err)
+		}
+
+		existingMemoriesRaw, err := m.vectorStore.Search(embeddings, 5, filters)
+		if err != nil {
+			return nil, fmt.Errorf("error searching existing memories: %w", err)
+		}
+
+		existingMemories := make([]MemoryItem, len(existingMemoriesRaw))
+		for i, mem := range existingMemoriesRaw {
+			memoryItem := MemoryItem{
+				ID:       mem.ID,
+				Score:    &mem.Score,
+				Metadata: mem.Payload,
+				Memory:   mem.Payload["data"].(string), // Assuming "data" is always a string
+			}
+			existingMemories[i] = memoryItem
+		}
+
+		serializedExistingMemories := make([]map[string]interface{}, len(existingMemories))
+		for i, item := range existingMemories {
+			serializedItem := map[string]interface{}{
+				"id":     item.ID,
+				"memory": item.Memory,
+				"score":  item.Score,
+			}
+			serializedExistingMemories[i] = serializedItem
+		}
+		log.Printf("Total existing memories: %d", len(existingMemories))
+
+		messages := getUpdateMemoryMessages(serializedExistingMemories, newRetrievedFacts)
+
+		tools := []Tool{ADD_MEMORY_TOOL, UPDATE_MEMORY_TOOL, DELETE_MEMORY_TOOL}
+
+		// 4. generates another prompt to update the memories based on the new facts and sends it to the LLM
+		response, err := m.llm.GenerateResponse([]llms.MessageContent{messages}, tools, false)
+		if err != nil {
+			return nil, fmt.Errorf("error generating response with tools: %w", err)
+		}
+
+		responseMap, ok := response.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("error: response is not a map[string]interface{}")
+		}
+
+		// 5. processes the LLM's response, which contains actions to add, update, or delete memories
+		toolCalls, ok := responseMap["tool_calls"].([]interface{})
+		functionResults := make([]map[string]interface{}, 0)
+
+		if ok {
+			availableFunctions := map[string]func(map[string]interface{}) (string, error){
+				"add_memory":    m.createMemoryTool,
+				"update_memory": m.updateMemoryToolWrapper,
+				"delete_memory": m.deleteMemoryTool,
+			}
+
+			for _, toolCallRaw := range toolCalls {
+				toolCall, ok := toolCallRaw.(map[string]interface{})
+				if !ok {
+					log.Printf("Warning: Unexpected tool_call format: %+v", toolCallRaw)
+					continue
+				}
+
+				functionName, ok := toolCall["name"].(string)
+				if !ok {
+					log.Printf("Warning: Function name not found or not a string in tool_call: %+v", toolCall)
+					continue
+				}
+
+				functionToCall, ok := availableFunctions[functionName]
+				if !ok {
+					log.Printf("Warning: Function %s not found in available functions", functionName)
+					continue
+				}
+
+				argumentsRaw, ok := toolCall["arguments"].(string)
+				if !ok {
+					log.Printf("Warning: Arguments not found or not a string in tool_call: %+v", toolCall)
+					continue
+				}
+
+				var functionArgs map[string]interface{}
+				err = json.Unmarshal([]byte(argumentsRaw), &functionArgs)
+				if err != nil {
+					log.Printf("Error unmarshaling function arguments: %v", err)
+					continue
+				}
+
+				log.Printf("[openai_func] func: %s, args: %+v", functionName, functionArgs)
+
+				if functionName == "add_memory" || functionName == "update_memory" {
+					functionArgs["metadata"] = metadata
+				}
+
+				// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
+				functionResultID, err := functionToCall(functionArgs)
+				if err != nil {
+					log.Printf("Error calling function %s: %v", functionName, err)
+					continue
+				}
+
+				functionResults = append(functionResults, map[string]interface{}{
+					"id":    functionResultID,
+					"event": trimMemorySuffix(functionName),
+					"data":  functionArgs["data"],
+				})
+				// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
+			}
+		}
+		// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
+	*/
 	// m.telemetry.CaptureEvent("memGo.add", nil)
-	return map[string]interface{}{"message": "ok", "details": functionResults}, nil
+	return map[string]interface{}{"message": "ok", "details": "functionResults"}, nil
 }
 
 func (m *Memory) updateMemoryToolWrapper(args map[string]interface{}) (string, error) {

@@ -16,7 +16,7 @@ func NewAzureOpenAILLM(config map[string]interface{}) LLM {
 	return &AzureOpenAILLM{config: baseConfig}
 }
 
-func (a *AzureOpenAILLM) GenerateResponse(messages []llms.MessageContent, tools []Tool) (interface{}, error) {
+func (a *AzureOpenAILLM) GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool, toolChoice string) (interface{}, error) {
 	return nil, errors.New("AzureOpenAILLM.GenerateResponse not implemented")
 }
 

@@ -16,7 +16,7 @@ func NewTogetherLLM(config map[string]interface{}) LLM {
 	return &TogetherLLM{config: baseConfig}
 }
 
-func (t *TogetherLLM) GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool) (interface{}, error) {
+func (t *TogetherLLM) GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool, toolChoice string) (interface{}, error) {
 	return nil, errors.New("TogetherLLM.GenerateResponse not implemented")
 }
 
