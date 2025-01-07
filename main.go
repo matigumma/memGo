@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/matigumma/memGo/chains"
 	"github.com/matigumma/memGo/sqlitemanager"
 	"github.com/matigumma/memGo/telemetry"
 	"github.com/tmc/langchaingo/llms"
@@ -172,11 +173,11 @@ func (m *Memory) Add(
 
 	// en este paso prepara la ejecucion asincrona de la deduccion de la memoria en el vectorstore
 
-	// create embeddings for the data
-	embeddings, err := m.embeddingModel.Embed(data)
-	if err != nil {
-		return nil, fmt.Errorf("error embedding data: %w", err)
-	}
+	/* =============chain.MEMORY_DEDUCTION agent============== */
+	/* chain test */
+	deductionAgent := chains.NewChain(true)
+	deductionAgent.MEMORY_DEDUCTION(data)
+	/* end chain test */
 
 	// deduccion de factos en el imput del usuario q valgan la pena
 	currentPrompt := MEMORY_DEDUCTION_PROMPT // OJO ESTA VERSION ES SUPER REDUCIDA.. dejo en prompts el original
@@ -201,6 +202,8 @@ func (m *Memory) Add(
 	// esto deberia imprimir un json.. creo que asi seria { "facts": [{...}, {...}] }
 	log.Printf("Extracted factos: %+v \n", extractedMemories)
 
+	/* ============END chain.MEMORY_DEDUCTION agent=============== */
+
 	var newRetrievedFacts []interface{}
 	extractedMemoriesStr, ok := extractedMemories.(string)
 	if !ok {
@@ -217,6 +220,12 @@ func (m *Memory) Add(
 	log.Printf("RetrievedFacts json factos: %+v \n", newRetrievedFacts)
 
 	// 3. searches the vector store for existing memories similar to the new facts and retrieves their IDs and text
+	// create embeddings for the data
+	embeddings, err := m.embeddingModel.Embed(data)
+	if err != nil {
+		return nil, fmt.Errorf("error embedding data: %w", err)
+	}
+
 	existingMemoriesRaw, err := m.vectorStore.Search(embeddings, 5, filters)
 	if err != nil {
 		return nil, fmt.Errorf("error searching existing memories: %w", err)
