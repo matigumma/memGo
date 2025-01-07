@@ -723,7 +723,9 @@ func main() {
 
 	userId := uuid.New().String()
 
-	res, err := m.Add("hello world", &userId, nil, nil, nil, nil, nil)
+	res, err := m.Add(
+		"Bueno, los contadores nos ayudan un montón, porque justo acá en Mar del Plata son ustedes dos, AgroVulcan y ustedes, no hay otros, y justo tienen la misma contadora, eso está buenísimo, está buenísimo. Pero eso fue el único tema que dijimos, bueno, como que no lo sabíamos hacer, pero después salió sin problema el balance, no hubo ningún inconveniente, porque, o sea, viste que el balance si cargas bien, lo gasto, no, no, no pasa nada. Lo único que veo en el balance, que también me lo comentó la otra contadora, es que hay un tema de que no da 0,0, viste cuando pedís balance y sumás todas las cuentas de pasivo, activo, todo, bueno, la suma de todo eso no da 0. Bueno, pero eso lo tenés que mandar, porque tiene que dar 0, o sea, no hay manera de que no te dé 0, si siempre cada ciento te dio 0, ¿por qué el balance no te va a dar 0? Eso es porque tiene que haber algún decimal jodiendo ahí, pero lo resuelven. Si te pasa eso, ¿cuándo cerrás tu balance vos? No, ya cerramos el 31 de mayo. Cierro el balance, nosotros lo hicimos, que para agosto yo lo tenía. Sí, sí. Bueno, cuando cierres de nuevo, agosto están llegando mensajes. Sí, sí, sí. Nos mandás. Dale. La idea es que vos cada vez que hagas una cosa que algo no te da, o que no estés vos laburando para arreglarlo, a veces yo entiendo que por el tiempo uno dice, bueno, me pongo yo y lo acomodo y el resultado es el mismo, pero bueno, si vos podés mandarlo y esperar un cachito... Sí, claro, las que sean cosas que no puedo arreglar, sí, porque no quiero meter mano y, o sea, no quiero cargar algo, cargarlo por decirlo",
+		&userId, nil, nil, nil, nil, nil)
 	if err != nil {
 		log.Fatalf("Error adding memory: %v", err)
 	}

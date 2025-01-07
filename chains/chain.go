@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/tmc/langchaingo/chains"
@@ -174,13 +175,15 @@ func (c *Chain) MEMORY_DEDUCTION(messages []llms.MessageContent) ([]string, erro
 		log.Panic(err)
 	}
 
-	c.debugPrint("Using model: " + fmt.Sprintf("%s", model))
+	c.debugPrint("Using model: " + model)
 	c.debugPrint("Output from LLM: " + fmt.Sprintf("%v", out["text"]))
 
 	parsedOutput, ok := out["text"].(string)
 	if !ok {
 		log.Panic("Failed to parse output text")
 	}
+
+	parsedOutput = strings.Trim(parsedOutput, "`")
 
 	var result map[string][]string
 	err = json.Unmarshal([]byte(parsedOutput), &result)
