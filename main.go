@@ -176,32 +176,39 @@ func (m *Memory) Add(
 	/* =============chain.MEMORY_DEDUCTION agent============== */
 	/* chain test */
 	deductionAgent := chains.NewChain(true)
-	deductionAgent.MEMORY_DEDUCTION(data)
-	/* end chain test */
+	// same as original core line 110, convert string to MessageContent
+	Messages := []llms.MessageContent{}
+	Messages = append(Messages, llms.TextParts(llms.ChatMessageTypeHuman, data))
 
-	// deduccion de factos en el imput del usuario q valgan la pena
-	currentPrompt := MEMORY_DEDUCTION_PROMPT // OJO ESTA VERSION ES SUPER REDUCIDA.. dejo en prompts el original
-	if prompt != nil {
-		// uso el prompt del usuario si lo pasa
-		currentPrompt = *prompt
-	}
-	formattedPrompt := fmt.Sprintf(currentPrompt, data, metadata)
-
-	inputMessages := []llms.MessageContent{}
-
-	inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeSystem, "You are an expert at deducing facts, preferences and memories from unstructured text."))
-	inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeHuman, formattedPrompt))
-
-	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
-	//new_retrieved_facts
-	extractedMemories, err := m.llm.GenerateResponse(inputMessages, nil, true)
+	extractedMemories, err := deductionAgent.MEMORY_DEDUCTION(Messages)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
+	/* end chain test */
 
-	// esto deberia imprimir un json.. creo que asi seria { "facts": [{...}, {...}] }
+	/*
+		// deduccion de factos en el imput del usuario q valgan la pena
+		currentPrompt := MEMORY_DEDUCTION_PROMPT // OJO ESTA VERSION ES SUPER REDUCIDA.. dejo en prompts el original
+		if prompt != nil {
+			// uso el prompt del usuario si lo pasa
+			currentPrompt = *prompt
+		}
+		formattedPrompt := fmt.Sprintf(currentPrompt, data, metadata)
+
+		inputMessages := []llms.MessageContent{}
+
+		inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeSystem, "You are an expert at deducing facts, preferences and memories from unstructured text."))
+		inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeHuman, formattedPrompt))
+
+		// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
+		//new_retrieved_facts
+		extractedMemories, err := m.llm.GenerateResponse(inputMessages, nil, true)
+		if err != nil {
+			return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
+		}
+
+	*/
 	log.Printf("Extracted factos: %+v \n", extractedMemories)
-
 	/* ============END chain.MEMORY_DEDUCTION agent=============== */
 
 	var newRetrievedFacts []interface{}
