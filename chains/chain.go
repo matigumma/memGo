@@ -179,7 +179,7 @@ Esta es la conversación:
 		`
 	*/
 
-	model := "gpt-3.5-turbo"
+	model := "gpt-3.5-turbo" // este funciona bastante bien
 	// model := "gpt-4o-mini"
 	// model := "gpt-4o"
 
