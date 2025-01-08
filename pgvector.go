@@ -16,7 +16,7 @@ func NewPGVector(config map[string]interface{}) VectorStore {
 func (p *PGVector) Insert(vectors [][]float64, ids []string, payloads []map[string]interface{}) error {
 	return errors.New("PGVector.Insert not implemented")
 }
-func (p *PGVector) Search(query []float64, limit int, filters map[string]interface{}) ([]SearchResult, error) {
+func (p *PGVector) Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
 	return nil, errors.New("PGVector.Search not implemented")
 }
 func (p *PGVector) Get(vectorID string) (*SearchResult, error) {

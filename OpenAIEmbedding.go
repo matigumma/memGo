@@ -46,12 +46,12 @@ func NewOpenAIEmbedding(config map[string]interface{}) Embedder {
 	return &OpenAIEmbedding{config: &baseConfig, client: client}
 }
 
-func (o *OpenAIEmbedding) Embed(text string) ([]float64, error) {
+func (o *OpenAIEmbedding) Embed(text string) ([]float64, []float32, error) {
 	text = strings.ReplaceAll(text, "\n", " ")
 
 	embedding, err := o.client.CreateEmbedding(context.Background(), []string{text})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Convert [][]float32 to []float64
@@ -60,7 +60,7 @@ func (o *OpenAIEmbedding) Embed(text string) ([]float64, error) {
 		flatEmbedding = append(flatEmbedding, float64(value))
 	}
 
-	return flatEmbedding, nil
+	return flatEmbedding, embedding[0], nil
 
 	// return nil, errors.New("OpenAIEmbedding.Embed not implemented")
 }

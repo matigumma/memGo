@@ -16,7 +16,7 @@ func NewChromaDB(config map[string]interface{}) VectorStore {
 func (c *ChromaDB) Insert(vectors [][]float64, ids []string, payloads []map[string]interface{}) error {
 	return errors.New("ChromaDB.Insert not implemented")
 }
-func (c *ChromaDB) Search(query []float64, limit int, filters map[string]interface{}) ([]SearchResult, error) {
+func (c *ChromaDB) Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
 	return nil, errors.New("ChromaDB.Search not implemented")
 }
 func (c *ChromaDB) Get(vectorID string) (*SearchResult, error) {

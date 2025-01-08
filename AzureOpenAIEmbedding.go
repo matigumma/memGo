@@ -12,6 +12,6 @@ func NewAzureOpenAIEmbedding(config map[string]interface{}) Embedder {
 	return &AzureOpenAIEmbedding{config: baseConfig}
 }
 
-func (a *AzureOpenAIEmbedding) Embed(text string) ([]float64, error) {
-	return nil, errors.New("AzureOpenAIEmbedding.Embed not implemented")
+func (a *AzureOpenAIEmbedding) Embed(text string) ([]float64, []float32, error) {
+	return nil, nil, errors.New("AzureOpenAIEmbedding.Embed not implemented")
 }

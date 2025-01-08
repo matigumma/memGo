@@ -14,7 +14,12 @@ func NewMemoryConfig() MemoryConfig {
 		VectorStore: VectorStoreConfig{
 			// Provider options: "qdrant", "chroma", "pgvector"
 			Provider: "qdrant",
-			Config:   map[string]interface{}{},
+			Config: map[string]interface{}{
+				"collection_name":      "memGo",
+				"embedding_model_dims": 1536,
+				"Host":                 "localhost",
+				"Port":                 6334,
+			},
 		},
 		Llm: LlmConfig{
 			//Provider of the LLM (e.g., 'ollama', 'openai')

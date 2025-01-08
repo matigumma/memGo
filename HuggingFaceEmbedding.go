@@ -12,6 +12,6 @@ func NewHuggingFaceEmbedding(config map[string]interface{}) Embedder {
 	return &HuggingFaceEmbedding{config: baseConfig}
 }
 
-func (h *HuggingFaceEmbedding) Embed(text string) ([]float64, error) {
-	return nil, errors.New("HuggingFaceEmbedding.Embed not implemented")
+func (h *HuggingFaceEmbedding) Embed(text string) ([]float64, []float32, error) {
+	return nil, nil, errors.New("HuggingFaceEmbedding.Embed not implemented")
 }

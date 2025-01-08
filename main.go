@@ -54,7 +54,7 @@ type LLM interface {
 
 // Embedder - Interface for Embedders (already defined, ensuring it's here for context)
 type Embedder interface {
-	Embed(text string) ([]float64, error)
+	Embed(text string) ([]float64, []float32, error)
 	// Add other methods as needed
 }
 
@@ -465,12 +465,12 @@ func (m *Memory) Search(query string, userID *string, agentID *string, runID *st
 	}
 
 	// m.telemetry.CaptureEvent("memGo.search", map[string]interface{}{"filters": len(filters), "limit": limit})
-	embeddings, err := m.embeddingModel.Embed(query)
+	_, embeddings32, err := m.embeddingModel.Embed(query)
 	if err != nil {
 		return nil, fmt.Errorf("error embedding query: %w", err)
 	}
 
-	memories, err := m.vectorStore.Search(embeddings, limit, filters)
+	memories, err := m.vectorStore.Search(embeddings32, limit, filters)
 	if err != nil {
 		return nil, fmt.Errorf("error searching vector store: %w", err)
 	}
@@ -580,7 +580,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 	log.Printf("Creating memory with data=%s", data)
 
 	// 2. embeds the data using the embeddingModel
-	embeddings, err := m.embeddingModel.Embed(data)
+	embeddings, _, err := m.embeddingModel.Embed(data)
 	if err != nil {
 		return "", fmt.Errorf("error embedding data: %w", err)
 	}
@@ -646,7 +646,7 @@ func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) 
 		}
 	}
 
-	embeddings, err := m.embeddingModel.Embed(data)
+	embeddings, _, err := m.embeddingModel.Embed(data)
 	if err != nil {
 		return "", fmt.Errorf("error embedding data: %w", err)
 	}
