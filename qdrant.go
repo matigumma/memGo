@@ -48,7 +48,24 @@ func NewQdrant(config map[string]interface{}) VectorStore {
 }
 
 func (q *Qdrant) Insert(vectors [][]float64, ids []string, payloads []map[string]interface{}) error {
-	return errors.New("Qdrant.Insert not implemented")
+	points := make([]*qdrant.PointStruct, len(vectors))
+	for i, vector := range vectors {
+		float32Vector := make([]float32, len(vector))
+		for j, val := range vector {
+			float32Vector[j] = float32(val)
+		}
+		points[i] = &qdrant.PointStruct{
+			Id:      qdrant.NewID(ids[i]),
+			Vectors: qdrant.NewVectors(float32Vector...),
+			Payload: qdrant.NewValueMap(payloads[i]),
+		}
+	}
+
+	q.client.Upsert(context.Background(), &qdrant.UpsertPoints{
+		CollectionName: q.config["collection_name"].(string),
+		Points:         points,
+	})
+	return nil
 }
 
 func (q *Qdrant) _createFilter(filters map[string]interface{}) *qdrant.Filter {

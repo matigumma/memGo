@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -141,7 +142,7 @@ func (m *Memory) Add(
 	filters map[string]interface{}, // Filters to apply to the search. Defaults nil
 	prompt *string, // Prompt to use for memory deduction. Defaults nil.
 ) (map[string]interface{}, error) {
-
+	fmt.Println("Memory.Add")
 	// creo mapa de metadatos si no se pasa por parametro
 	if metadata == nil {
 		metadata = make(map[string]interface{})
@@ -173,18 +174,23 @@ func (m *Memory) Add(
 
 	// en este paso prepara la ejecucion asincrona de la deduccion de la memoria en el vectorstore
 
-	/* =============chain.MEMORY_DEDUCTION agent============== */
-	/* chain test */
-	deductionAgent := chains.NewChain(true)
-	// same as original core line 110, convert string to MessageContent
+	/* =============chain.MEMORY_DEDUCTION process============== */
+	// Este paso obtiene informacion generalizada relevante de la data y devuelve in JSON bien estructurado.
+	/* reduction test */
+	reductionAgent := chains.NewChain(true)
 	Messages := []llms.MessageContent{}
 	Messages = append(Messages, llms.TextParts(llms.ChatMessageTypeHuman, data))
 
-	extractedMemories, err := deductionAgent.MEMORY_DEDUCTION(Messages)
+	_, err := reductionAgent.MEMORY_REDUCTION(Messages)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
-	/* end chain test */
+	/* end reduction test */
+
+	/* ============= */
+
+	/* Deduction test */
+	/* end Deduction test */
 
 	/*
 		// deduccion de factos en el imput del usuario q valgan la pena
@@ -208,7 +214,7 @@ func (m *Memory) Add(
 		}
 
 	*/
-	log.Printf("Extracted factos: %+v \n", extractedMemories)
+	// log.Printf("Extracted factos: %+v \n", extractedMemories)
 	/* ============END chain.MEMORY_DEDUCTION agent=============== */
 	/*
 		var newRetrievedFacts []interface{}
@@ -721,20 +727,64 @@ func main() {
 
 	m := NewMemory(mc)
 
-	userId := uuid.New().String()
+	userId := "pgp"
+	agentId := "carolina"
+	runId := "entrevista-1"
 
-	res, err := m.Add(
-		"Bueno, los contadores nos ayudan un montón, porque justo acá en Mar del Plata son ustedes dos, AgroVulcan y ustedes, no hay otros, y justo tienen la misma contadora, eso está buenísimo, está buenísimo. Pero eso fue el único tema que dijimos, bueno, como que no lo sabíamos hacer, pero después salió sin problema el balance, no hubo ningún inconveniente, porque, o sea, viste que el balance si cargas bien, lo gasto, no, no, no pasa nada. Lo único que veo en el balance, que también me lo comentó la otra contadora, es que hay un tema de que no da 0,0, viste cuando pedís balance y sumás todas las cuentas de pasivo, activo, todo, bueno, la suma de todo eso no da 0. Bueno, pero eso lo tenés que mandar, porque tiene que dar 0, o sea, no hay manera de que no te dé 0, si siempre cada ciento te dio 0, ¿por qué el balance no te va a dar 0? Eso es porque tiene que haber algún decimal jodiendo ahí, pero lo resuelven. Si te pasa eso, ¿cuándo cerrás tu balance vos? No, ya cerramos el 31 de mayo. Cierro el balance, nosotros lo hicimos, que para agosto yo lo tenía. Sí, sí. Bueno, cuando cierres de nuevo, agosto están llegando mensajes. Sí, sí, sí. Nos mandás. Dale. La idea es que vos cada vez que hagas una cosa que algo no te da, o que no estés vos laburando para arreglarlo, a veces yo entiendo que por el tiempo uno dice, bueno, me pongo yo y lo acomodo y el resultado es el mismo, pero bueno, si vos podés mandarlo y esperar un cachito... Sí, claro, las que sean cosas que no puedo arreglar, sí, porque no quiero meter mano y, o sea, no quiero cargar algo, cargarlo por decirlo",
-		&userId, nil, nil, nil, nil, nil)
-	if err != nil {
-		log.Fatalf("Error adding memory: %v", err)
-	}
-	fmt.Printf("Memory ID: %+v\n", res)
+	/* ===mock data from transcription interview=== */
+	/*
+		// Read the content of transcription.txt
+		transcriptionContent, err := os.ReadFile("/Users/agrosistemas/Mati/test-golang/transcription.txt")
+		if err != nil {
+			log.Panicf("error reading transcription file: %v", err)
+		}
 
-	search, err := m.Search("hello", &userId, nil, nil, 5, nil)
+		// Convert the content to a string
+		transcriptionText := string(transcriptionContent)
+	*/
+
+	// Read the content of chunk_transcription.json
+	chunkFileContent, err := os.ReadFile("/Users/agrosistemas/Mati/test-golang/chunked_transcription.json")
 	if err != nil {
-		log.Fatalf("Error searching memory: %v", err)
+		log.Panicf("error reading chunk transcription file: %v", err)
 	}
-	fmt.Printf("Search results: %+v\n", search)
+
+	// Parse the JSON content
+	var chunkData struct {
+		Chunks []string `json:"chunks"`
+	}
+	err = json.Unmarshal(chunkFileContent, &chunkData)
+	if err != nil {
+		log.Panicf("error unmarshaling chunk transcription data: %v", err)
+	}
+
+	metadata := map[string]interface{}{
+		"fecha": time.Now().Format(time.RFC3339),
+	}
+
+	// Iterate over each chunk and process with m.Add
+	for index, chunk := range chunkData.Chunks {
+		fmt.Println("chunk index: ", index)
+		metadata["chunk_[120]_index"] = index
+		_, err := m.Add(chunk, &userId, &agentId, &runId, metadata, nil, nil) // Pass metadata directly without using &
+		if err != nil {
+			log.Printf("Error adding memory for chunk: %v", err)
+		}
+	}
+
+	/* ===mock data from transcription interview=== */
+
+	// res, err := m.Add(transcriptionText,
+	// 	&userId, nil, nil, nil, nil, nil)
+	// if err != nil {
+	// 	log.Fatalf("Error adding memory: %v", err)
+	// }
+	// fmt.Printf("Memory ID: %+v\n", res)
+
+	// search, err := m.Search("hello", &userId, nil, nil, 5, nil)
+	// if err != nil {
+	// 	log.Fatalf("Error searching memory: %v", err)
+	// }
+	// fmt.Printf("Search results: %+v\n", search)
 
 }
