@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -177,32 +178,223 @@ func (m *Memory) Add(
 	// Este paso obtiene informacion generalizada relevante de la data y devuelve in JSON bien estructurado.
 	/* reduction test */
 
-	fmt.Println("Data: " + data)
+	fmt.Println("Raw Data: " + data)
 
-	reductionAgent := chains.NewChain(true)
+	deductionAgent := chains.NewChain(true)
 	Messages := []llms.MessageContent{}
 	Messages = append(Messages, llms.TextParts(llms.ChatMessageTypeHuman, data))
 
 	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
 	// _, err := reductionAgent.MEMORY_REDUCTION(Messages)
-	deductios, err := reductionAgent.MEMORY_DEDUCTION(Messages)
+	deductios, err := deductionAgent.MEMORY_DEDUCTION(Messages)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
 
+	cantFacts := len(deductios["relevant_facts"].([]interface{}))
 	// Check if there are any relevant facts to store
-	if len(deductios["relevant_facts"].([]interface{})) == 0 {
+	if cantFacts == 0 {
 		return map[string]interface{}{
 			"message": "No memory added",
 			"details": "no relevant facts found",
 		}, nil
 	}
+
+	fmt.Println("Relevant facts encontrados: " + strconv.Itoa(cantFacts))
 	/* end reduction test */
+
+	// HASTA ACA TENEMOS:
+	// -----------------
+	// DATA string
+	// MESSAGES []llms.MessageContent (de la data como ChatMessageTypeHuman)
+	// DEDUCTIOS map[string]interface{} (relevants_facts, metadata)
+
+	// DEDUCTIOS SCHEMA:
+	/*
+		{
+			"relevant_facts": {
+				"type": "array",
+				"items": {
+					"type": "string"
+				}
+			},
+			"metadata": {
+				"type": "object",
+				"properties": {
+					"scope": {
+						"type": "string"
+					},
+					"associations": {
+						"type": "object",
+						"properties": {
+							"related_entities": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"related_events": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"tags": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"sentiment": {
+						"type": "string",
+						"description": "The overall sentiment of the text, e.g., positive, negative, neutral"
+					}
+				}
+			}
+			}
+		}
+	*/
 
 	/* ============= */
 
 	/* Deduction test */
 	/* end Deduction test */
+
+	/* Search for related memories  */
+
+	relevantFacts, ok := deductios["relevant_facts"].([]interface{})
+	if !ok {
+		return nil, errors.New("error: relevant_facts is not a list")
+	}
+
+	// el tamaño maximo es de la cantidad de relevant_facts * searchs limit de 5
+	acumuladorMemoriasParaEvaluar := make([]MemoryItem, (len(relevantFacts) * 5))
+
+	// metadata = deductios["metadata"]
+
+	filterss := make(map[string]interface{})
+	// creo un filtro con los metadatos que me propone la deduccion
+
+	//  TODO usar algun flag para elegir si agregar o no al filtro / metadata los valores deducidos
+	if metadataMap, ok := deductios["metadata"].(map[string]interface{}); ok {
+		filterss["scope"] = metadataMap["scope"]
+		metadata["scope"] = metadataMap["scope"]
+		filterss["sentiment"] = metadataMap["sentiment"]
+		metadata["sentiment"] = metadataMap["sentiment"]
+
+		if associations, ok := metadataMap["associations"].(map[string]interface{}); ok {
+			// falla interface convertion here cuando hace el convertQdrantPayload para el Search
+			metadata["related_entities"] = associations["related_entities"] // esto es un arreglo debe ser eso
+			filterss["related_entities"] = associations["related_entities"]
+			metadata["related_events"] = associations["related_events"]
+			filterss["related_events"] = associations["related_events"]
+			metadata["tags"] = associations["tags"]
+			filterss["tags"] = associations["tags"]
+		}
+	}
+
+	for fact_index, fact := range relevantFacts {
+		factStr, ok := fact.(string)
+		if !ok {
+			log.Printf("Skipping non-string fact: %v", fact)
+			continue
+		}
+
+		_, embeddings32, err := m.embeddingModel.Embed(factStr)
+		if err != nil {
+			log.Printf("Error embedding fact: %v", err)
+			continue
+		}
+
+		existingMemoriesRaw, err := m.vectorStore.Search(embeddings32, 5, filterss)
+		if err != nil {
+			log.Printf("Error searching existing memories for fact: %v", err)
+			continue
+		}
+
+		countExistingMemories := len(existingMemoriesRaw)
+
+		if countExistingMemories == 0 {
+
+			log.Printf("No existing memories found for fact index: %d", fact_index)
+			// 2025/01/09 15:40:46 No existing memories found for fact index: 0
+			// 2025/01/09 15:40:46 Creating memory with data=Está buscando material sobre ingeniería de prompts
+			// result of creating memory tool: 1ca52a41-3393-4777-9c0a-2a25a039770e
+			// en este caso deberian agregarse las nuevas memorias al vectorstore
+			s, err := m.createMemoryTool(map[string]interface{}{"data": factStr, "metadata": metadata})
+			if err != nil {
+				return nil, fmt.Errorf("error creating memory tool: %w", err)
+			}
+
+			fmt.Println("result of creating memory tool: " + s)
+			continue
+		}
+
+		fmt.Printf("Existing memories for fact %d: %d\n", fact_index, len(existingMemoriesRaw))
+
+		for i, mem := range existingMemoriesRaw {
+			Score := &mem.Score
+			hash := mem.Payload["hash"].(string)
+			Metadata := mem.Payload
+			Memory := mem.Payload["data"].(string)
+
+			fmt.Printf("%d. Score: %f, Metadata: %v, Memory: %s\n", i, *Score, Metadata, Memory)
+			// Existing memories for fact 0: 1
+			// 0. Score: 1.000000, Metadata: map[agent_id:whatsapp created_at:2025-01-09T10:40:47-08:00 data:Está buscando material sobre ingeniería de prompts hash:6e53731be7ca1489e95b9e3cdcc3c58e user_id:Blas Briceño], Memory: Está buscando material sobre ingeniería de prompts
+			// guardar en un acumulador para procesarlas luego
+			acumuladorMemoriasParaEvaluar = append(acumuladorMemoriasParaEvaluar, MemoryItem{
+				ID:       fmt.Sprintf("%d_%s", fact_index, mem.ID),
+				Score:    Score,
+				Memory:   Memory,
+				Metadata: Metadata,
+				Hash:     &hash,
+			})
+		}
+
+		// INSERT_YOUR_CODE
+		// To search in acumuladorMemoriasParaEvaluar by MemoryItem.ID, you can use a simple loop to iterate over the slice and check each item's ID.
+		// Here's a function to perform the search:
+
+		// Function to find a MemoryItem by ID
+		// func findMemoryItemByID(id string, items []MemoryItem) *MemoryItem {
+		// 	for _, item := range items {
+		// 		if item.ID == id {
+		// 			return &item
+		// 		}
+		// 	}
+		// 	return nil
+		// }
+
+		// // Example usage
+		// searchID := "some_id_to_search"
+		// foundItem := findMemoryItemByID(searchID, acumuladorMemoriasParaEvaluar)
+		// if foundItem != nil {
+		// 	fmt.Printf("Found MemoryItem: %+v\n", *foundItem)
+		// } else {
+		// 	fmt.Println("MemoryItem not found")
+		// }
+
+		// _ = existingMemoriesRaw
+
+		// Process existingMemoriesRaw as needed
+
+	} // fin for range relevantFacts
+
+	/* end Search for related memories test */
+
+	// // 3. searches the vector store for existing memories similar to the new facts and retrieves their IDs and text
+	// // create embeddings for the data
+	// _, embeddings32, err := m.embeddingModel.Embed(data)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("error embedding data: %w", err)
+	// }
+
+	// existingMemoriesRaw, err := m.vectorStore.Search(embeddings32, 5, filters)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("error searching existing memories: %w", err)
+	// }
 
 	/*
 		// deduccion de factos en el imput del usuario q valgan la pena
@@ -224,8 +416,8 @@ func (m *Memory) Add(
 		if err != nil {
 			return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 		}
-
 	*/
+
 	// log.Printf("Extracted factos: %+v \n", extractedMemories)
 	/* ============END chain.MEMORY_DEDUCTION agent=============== */
 	/*
@@ -610,7 +802,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 	hasher.Write([]byte(data))
 	metadata["hash"] = hex.EncodeToString(hasher.Sum(nil))
 
-	pacific, err := time.LoadLocation("America/Los_Angeles")
+	pacific, err := time.LoadLocation("America/Buenos_Aires")
 	if err != nil {
 		return "", fmt.Errorf("error loading timezone: %w", err)
 	}
@@ -793,15 +985,22 @@ func main() {
 	agentId := "whatsapp"
 	// runId := "entrevista-1"
 
-	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
+	text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
 	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
 	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
 	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
 	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
-	text := "Hola, buen dia"
+	// text := "Hola, buen dia"
 	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
-	res, err := m.Add(text,
-		&userId, &agentId, nil, nil, nil, nil)
+	res, err := m.Add(
+		text,     // data
+		&userId,  // user_id
+		&agentId, // agent_id
+		nil,      // run_id
+		nil,      // metadata
+		nil,      // filtros
+		nil,      // custom prompt
+	)
 	if err != nil {
 		log.Fatalf("Error adding memory: %v", err)
 	}

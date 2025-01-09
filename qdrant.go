@@ -106,18 +106,16 @@ func (q *Qdrant) _createFilter(filters map[string]interface{}) *qdrant.Filter {
 func (q *Qdrant) Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
 	limite := uint64(limit)
 
+	qdrantFilters := q._createFilter(filters)
+
 	// Create search points
 	searchPoints := &qdrant.QueryPoints{
 		CollectionName: q.config["collection_name"].(string),
 		Query:          qdrant.NewQuery(query...),
 		Limit:          &limite,
-		// Filter: &qdrant.Filter{
-		// 	Must: []*qdrant.Condition{
-		// 		qdrant.NewMatch("city", "London"),
-		// 	},
-		// },
+		Filter:         qdrantFilters,
+		WithPayload:    qdrant.NewWithPayload(true),
 		// Payload and vector in the result:
-		// WithPayload:    qdrant.NewWithPayload(true),
 		// WithVectors:    qdrant.NewWithVectors(true),
 	}
 

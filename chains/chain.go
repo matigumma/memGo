@@ -246,8 +246,9 @@ ejemplo:
 		"El documento es para tres equipos: copy, diseño y contenido",
 		"Busca recursos bibliográficos para ampliar el material"
 	],
-	"metadata: {
-		"context": "universitario",
+	"metadata": {
+		"scope": "universitario",
+		"sentiment": "neutral",
 		"associations": {
 			"related_entities": ["copy", "diseño", "contenido"],
 			"related_events": ["creación de documentos", "investigación de recursos"],
