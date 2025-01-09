@@ -185,9 +185,17 @@ func (m *Memory) Add(
 
 	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
 	// _, err := reductionAgent.MEMORY_REDUCTION(Messages)
-	_, err := reductionAgent.MEMORY_DEDUCTION(Messages)
+	deductios, err := reductionAgent.MEMORY_DEDUCTION(Messages)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
+	}
+
+	// Check if there are any relevant facts to store
+	if len(deductios["relevant_facts"].([]interface{})) == 0 {
+		return map[string]interface{}{
+			"message": "No memory added",
+			"details": "no relevant facts found",
+		}, nil
 	}
 	/* end reduction test */
 
@@ -790,14 +798,15 @@ func main() {
 	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
 	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
 	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
-	// text := "Hola, buen dia"
-	text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
-	_, err := m.Add(text,
+	text := "Hola, buen dia"
+	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
+	res, err := m.Add(text,
 		&userId, &agentId, nil, nil, nil, nil)
 	if err != nil {
 		log.Fatalf("Error adding memory: %v", err)
 	}
-	// fmt.Printf("Memory ID: %+v\n", res)
+
+	fmt.Printf("Memory add response: %+v\n", res)
 
 	// search, err := m.Search("hello", &userId, nil, nil, 5, nil)
 	// if err != nil {

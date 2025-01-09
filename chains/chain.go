@@ -285,19 +285,9 @@ ejemplo:
 	// We can pass callbacks to Run as an option, e.g:
 	//   chains.WithCallback(callbacks.StreamLogHandler{})
 	ctx := context.Background()
-	parsedMessages := []llms.MessageContent{}
-
-	for _, msg := range messages {
-		if msg.Role == llms.ChatMessageTypeHuman || msg.Role == llms.ChatMessageTypeAI {
-			parsedMessages = append(parsedMessages, msg)
-		}
-	}
-
-	// c.debugPrint("Parsed messages: " + fmt.Sprintf("%v", parsedMessages))
 
 	out, err := chains.Call(ctx, llmChain, map[string]any{
-		// "date":         time.Now().Format("13-December-2025"),
-		"conversation": parsedMessages,
+		"conversation": messages,
 	})
 	// out, err := chains.Call(ctx, llmChain, map[string]any{
 	// 	"text":    "Jugando a la pelota con los chicos ayer me lesione la pierna izquieda y no voy a poder jugar por 6 meses",
