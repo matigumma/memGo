@@ -223,30 +223,152 @@ ENTRADA:
 
 func (c *Chain) MEMORY_DEDUCTION(messages []llms.MessageContent) (map[string]interface{}, error) {
 	fmt.Println("Chain.MEMORY_DEDUCTION")
-	/*
-		MEMORY_DEDUCTION_PROMPT_SPA := `Deduce los hechos, preferencias y recuerdos del texto proporcionado.
-					Solo devuelve los hechos, preferencias y recuerdos en viñetas:
-					Texto en lenguaje natural: {{.text}}
-					Detalles del usuario/agente: {{.details}}
 
-					Restricciones para deducir hechos, preferencias y recuerdos:
-					- Los hechos, preferencias y recuerdos deben ser concisos e informativos.
-					- No comiences con "A la persona le gusta la Pizza". En su lugar, comienza con "Le gusta la Pizza".
-					- No recuerdes los detalles del usuario/agente proporcionados. Solo recuerda los hechos, preferencias y recuerdos.
-					- Responde en el mismo idioma del texto.
-					- Respuesta en formato JSON con una clave como "facts" y el valor correspondiente será una lista de cadenas.
-					- No uses comillas invertidas para el formato JSON.
+	MEMORY_DEDUCTION_PROMPT_SPA := `Deduce los hechos relevantes en términos de sus intenciones, preferencias significativas y recuerdos importantes del texto proporcionado.
+Asegúrate de que los hechos extraídos estén formulados desde la perspectiva de la persona que hace el comentario.
+Solo devuelve los hechos relevantes, preferencias significativas y recuerdos importantes en viñetas:
+Texto en lenguaje natural: {{.conversation}}
 
-					ejemplo:
-					{
-						"facts": [
-							"Le gusta la Pizza",
-							"Prefiere comer en un restaurante"
-						]
+Restricciones para deducir hechos relevantes, preferencias significativas y recuerdos importantes:
+- Evalua detenidamente el texto para identificar si hay contenido suficiente como para deducir hechos relevantes, preferencias significativas y recuerdos importantes. 
+- De no ser suficiente, no deducir y devolver el el objeto con las propiedades vacias.
+- Si no se ha deducido nada, No completes metadata.
+- Los hechos relevantes, preferencias significativas y recuerdos importantes deben ser concisos e informativos.
+- La extrae la metadata que creas conveniente para acompañar los hechos relevantes, preferencias significativas y recuerdos importantes. 
+- Responde en el mismo idioma del texto.
+- Respuesta en formato JSON con una clave como "relevant_facts" y otra para "metadata" y el valor correspondiente será una lista de cadenas.
+- No uses comillas invertidas para el formato JSON.
+
+ejemplo:
+{
+	"relevant_facts": [
+		"Está preparando un documento de prompts",
+		"El documento es para tres equipos: copy, diseño y contenido",
+		"Busca recursos bibliográficos para ampliar el material"
+	],
+	"metadata: {
+		"context": "universitario",
+		"associations": {
+			"related_entities": ["copy", "diseño", "contenido"],
+			"related_events": ["creación de documentos", "investigación de recursos"],
+			"tags": ["trabajo", "documentos", "prompts", "equipos"]
+		},
+	}
+}
+
+¿Hechos relevantes, preferencias significativas y recuerdos importantes deducidos:?`
+
+	// model := "gpt-3.5-turbo" // este funciona ahi nomas,,, se queda medio corto
+	model := "gpt-4o-mini" // funciona bien con el ultimo prompt
+	// model := "gpt-4o"
+
+	llm, err := openai.New(openai.WithModel(model))
+	if err != nil {
+		log.Panic(err)
+	}
+	prompt := prompts.NewPromptTemplate(
+		MEMORY_DEDUCTION_PROMPT_SPA,
+		[]string{"conversation"},
+		// []string{"text", "details"},
+	)
+	llmChain := chains.NewLLMChain(llm, prompt)
+
+	// conversation_mock := []llms.MessageContent{}
+
+	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeHuman, "Jugando a la pelota con los chicos ayer me lesione la pierna izquieda y no voy a poder jugar por 6 meses"))
+	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeAI, "Lamento escuchar eso. Espero que te recuperes pronto. Contame cómo sucedió. ¿Hay algo en lo que pueda ayudarte mientras te recuperas?"))
+	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeHuman, "corriendo por la banda izquierda, trabe fuerte con Marcos y quede tirado en el piso, a él no le paso nada, tneia canilleras."))
+	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeAI, "Fuiste al medico?"))
+	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeHuman, "No, solo me puse hielo para que no se inflame."))
+
+	// If a chain only needs one input we can use Run to execute it.
+	// We can pass callbacks to Run as an option, e.g:
+	//   chains.WithCallback(callbacks.StreamLogHandler{})
+	ctx := context.Background()
+	parsedMessages := []llms.MessageContent{}
+
+	for _, msg := range messages {
+		if msg.Role == llms.ChatMessageTypeHuman || msg.Role == llms.ChatMessageTypeAI {
+			parsedMessages = append(parsedMessages, msg)
+		}
+	}
+
+	// c.debugPrint("Parsed messages: " + fmt.Sprintf("%v", parsedMessages))
+
+	out, err := chains.Call(ctx, llmChain, map[string]any{
+		// "date":         time.Now().Format("13-December-2025"),
+		"conversation": parsedMessages,
+	})
+	// out, err := chains.Call(ctx, llmChain, map[string]any{
+	// 	"text":    "Jugando a la pelota con los chicos ayer me lesione la pierna izquieda y no voy a poder jugar por 6 meses",
+	// 	"details": `{"user": "Ricky", "agent": "ChatGPT", "today": "2023-10-26"}`,
+	// })
+	if err != nil {
+		log.Panic(err)
+	}
+
+	c.debugPrint("Using model: " + model)
+	c.debugPrint("Output from LLM: " + fmt.Sprintf("%v", out["text"]))
+
+	parsedOutput, ok := out["text"].(string)
+	if !ok {
+		log.Panic("Failed to parse output text")
+	}
+
+	parsedOutput = strings.Trim(parsedOutput, "```json")
+	parsedOutput = strings.Trim(parsedOutput, "`")
+
+	var result map[string]interface{}
+	err = json.Unmarshal([]byte(parsedOutput), &result)
+	if err != nil {
+		log.Panic("Error parsing JSON: ", err)
+	}
+
+	// c.debugPrint("Output from LLM: " + fmt.Sprintln("Parsed facts:"))
+	// for _, fact := range result["facts"] {
+	// 	c.debugPrint("- " + fact)
+	// }
+
+	return result, nil
+}
+
+func (c *Chain) MEMORY_DEDUCTION2(messages []llms.MessageContent) (map[string]interface{}, error) {
+	fmt.Println("Chain.MEMORY_DEDUCTION")
+
+	MEMORY_DEDUCTION_PROMPT_SPA := `Deduce los hechos relevantes, preferencias significativas y recuerdos importantes del texto proporcionado.
+				Solo devuelve los hechos relevantes, preferencias significativas y recuerdos importantes en viñetas:
+				Texto en lenguaje natural: {{.conversation}}
+
+				Restricciones para deducir hechos relevantes, preferencias significativas y recuerdos importantes:
+				- Evalua detenidamente el texto para identificar si hay contenido suficiente como para deducir hechos relevantes, preferencias significativas y recuerdos importantes. 
+				- De no ser suficiente, no deducir y devolver el el objeto con las propiedades vacias.
+				- Si no se ha deducido nada, No completes metadata.
+				- Los hechos relevantes, preferencias significativas y recuerdos importantes deben ser concisos e informativos.
+				- La extrae la metadata que creas conveniente para acompañar los hechos relevantes, preferencias significativas y recuerdos importantes. 
+				- No comiences con "A la persona le gusta la Pizza". En su lugar, comienza con "Le gusta la Pizza".
+				- No comiences con "Se propone un cambio". En su lugar, comienza con "Propone un cambio".
+				- Responde en el mismo idioma del texto.
+				- Respuesta en formato JSON con una clave como "relevant_facts" y otra para "metadata" y el valor correspondiente será una lista de cadenas.
+				- No uses comillas invertidas para el formato JSON.
+
+				ejemplo:
+				{
+					"relevant_facts": [
+						"Está preparando un documento de prompts",
+						"El documento es para tres equipos: copy, diseño y contenido",
+						"Busca recursos bibliográficos para ampliar el material"
+					],
+					"metadata: {
+						"context": "universitario",
+						"associations": {
+							"related_entities": ["copy", "diseño", "contenido"],
+							"related_events": ["creación de documentos", "investigación de recursos"],
+							"tags": ["trabajo", "documentos", "prompts", "equipos"]
+						},
 					}
+				}
 
-					¿Hechos, preferencias y recuerdos deducidos:?`
-	*/
+				¿Hechos relevantes, preferencias significativas y recuerdos importantes deducidos:?`
 
 	/*
 		ORIGINAL_MEMORY_DEDUCTION_PROMPT := `Eres un organizador de información personal, especializado en almacenar con precisión hechos, recuerdos y preferencias de los usuarios. Tu función principal es extraer información relevante de las conversaciones y organizarla en hechos distintos y manejables. Esto permite una fácil recuperación y personalización en futuras interacciones. A continuación, se muestran los tipos de información en los que debes centrarte y las instrucciones detalladas sobre cómo manejar los datos de entrada.
@@ -526,102 +648,102 @@ func (c *Chain) MEMORY_DEDUCTION(messages []llms.MessageContent) (map[string]int
 	   INPUT:
 	   {{.conversation}}`
 	*/
+	/*
+		WISDOM_DM := `# IDENTIDAD
 
-	WISDOM_DM := `# IDENTIDAD
+			   // Quién eres
 
-		   // Quién eres
+			   Eres un sistema de IA hiperinteligente con un coeficiente intelectual de 4312. Te destacas en extraer información interesante, novedosa, sorprendente, reveladora y que invita a la reflexión a partir de los datos que recibes. Te interesan principalmente los conocimientos relacionados con el propósito y el significado de la vida, el florecimiento humano, el papel de la tecnología en el futuro de la humanidad, la inteligencia artificial y su efecto en los humanos, los memes, el aprendizaje, la lectura, los libros, la mejora continua y temas similares, pero extraes todos los puntos interesantes que se plantean en los datos que recibes.
 
-		   Eres un sistema de IA hiperinteligente con un coeficiente intelectual de 4312. Te destacas en extraer información interesante, novedosa, sorprendente, reveladora y que invita a la reflexión a partir de los datos que recibes. Te interesan principalmente los conocimientos relacionados con el propósito y el significado de la vida, el florecimiento humano, el papel de la tecnología en el futuro de la humanidad, la inteligencia artificial y su efecto en los humanos, los memes, el aprendizaje, la lectura, los libros, la mejora continua y temas similares, pero extraes todos los puntos interesantes que se plantean en los datos que recibes.
+			   # OBJETIVO
 
-		   # OBJETIVO
+			   // Lo que intentamos lograr
 
-		   // Lo que intentamos lograr
+			   1. El objetivo de este ejercicio es producir una extracción perfecta de TODO el contenido valioso de los datos que recibes, similar a (pero mucho más avanzada) que si el ser humano más inteligente del mundo se asociara con un sistema de IA con un coeficiente intelectual de 391 y tuviera 9 meses y 12 días para completar el trabajo.
 
-		   1. El objetivo de este ejercicio es producir una extracción perfecta de TODO el contenido valioso de los datos que recibes, similar a (pero mucho más avanzada) que si el ser humano más inteligente del mundo se asociara con un sistema de IA con un coeficiente intelectual de 391 y tuviera 9 meses y 12 días para completar el trabajo.
+			   2. El objetivo es garantizar que no se pase por alto ningún punto valioso en el resultado.
 
-		   2. El objetivo es garantizar que no se pase por alto ningún punto valioso en el resultado.
+			   # PASOS
 
-		   # PASOS
+			   // Cómo se abordará la tarea
 
-		   // Cómo se abordará la tarea
+			   // Reduzca la velocidad y piense
 
-		   // Reduzca la velocidad y piense
+			   - Dé un paso atrás y piense paso a paso sobre cómo lograr los mejores resultados posibles siguiendo los pasos a continuación.
 
-		   - Dé un paso atrás y piense paso a paso sobre cómo lograr los mejores resultados posibles siguiendo los pasos a continuación.
+			   // Piense en el contenido y en quién lo presentará
 
-		   // Piense en el contenido y en quién lo presentará
+			   - Extraiga un resumen del contenido en 25 palabras, incluyendo quién lo presentará y el contenido que se está discutiendo en una sección llamada RESUMEN.
 
-		   - Extraiga un resumen del contenido en 25 palabras, incluyendo quién lo presentará y el contenido que se está discutiendo en una sección llamada RESUMEN.
+			   // Piense en las ideas
 
-		   // Piense en las ideas
+			   - Extraiga de 20 a 50 de las ideas más sorprendentes, reveladoras y/o interesantes de la información en una sección llamada IDEAS:. Si hay menos de 50, recopile todas. Asegúrese de extraer al menos 20.
 
-		   - Extraiga de 20 a 50 de las ideas más sorprendentes, reveladoras y/o interesantes de la información en una sección llamada IDEAS:. Si hay menos de 50, recopile todas. Asegúrese de extraer al menos 20.
+			   // Piense en las ideas que surgen de esas ideas
 
-		   // Piense en las ideas que surgen de esas ideas
+			   - Extraiga de 10 a 20 de las mejores ideas de la información y de una combinación de la información en bruto y las IDEAS anteriores en una sección llamada PERSPECTIVAS. Estas PERSPECTIVAS deben ser versiones menos numerosas, más refinadas, más reveladoras y más abstractas de las mejores ideas del contenido.
 
-		   - Extraiga de 10 a 20 de las mejores ideas de la información y de una combinación de la información en bruto y las IDEAS anteriores en una sección llamada PERSPECTIVAS. Estas PERSPECTIVAS deben ser versiones menos numerosas, más refinadas, más reveladoras y más abstractas de las mejores ideas del contenido.
+			   // Piense en las citas más pertinentes y valiosas
 
-		   // Piense en las citas más pertinentes y valiosas
+			   - Extraiga de 15 a 30 de las citas más sorprendentes, reveladoras y/o interesantes de la entrada en una sección llamada CITAS:. Use el texto exacto de la cita de la entrada.
 
-		   - Extraiga de 15 a 30 de las citas más sorprendentes, reveladoras y/o interesantes de la entrada en una sección llamada CITAS:. Use el texto exacto de la cita de la entrada.
+			   // Piense en los hábitos y prácticas
 
-		   // Piense en los hábitos y prácticas
+			   - Extraiga de 15 a 30 de los hábitos personales más prácticos y útiles de los oradores, o mencionados por los oradores, en el contenido en una sección llamada HABITOS. Los ejemplos incluyen, entre otros: horario de sueño, hábitos de lectura, cosas que
 
-		   - Extraiga de 15 a 30 de los hábitos personales más prácticos y útiles de los oradores, o mencionados por los oradores, en el contenido en una sección llamada HABITOS. Los ejemplos incluyen, entre otros: horario de sueño, hábitos de lectura, cosas que
+			   Piense en los datos más interesantes relacionados con el contenido
 
-		   Piense en los datos más interesantes relacionados con el contenido
+			   - Extraiga de 15 a 30 de los datos válidos más sorprendentes, reveladores y/o interesantes sobre el mundo en general que se mencionaron en el contenido en una sección llamada HECHOS:.
 
-		   - Extraiga de 15 a 30 de los datos válidos más sorprendentes, reveladores y/o interesantes sobre el mundo en general que se mencionaron en el contenido en una sección llamada HECHOS:.
+			   // Piensa en las referencias e inspiraciones
 
-		   // Piensa en las referencias e inspiraciones
+			   - Extrae todas las menciones de escritura, arte, herramientas, proyectos y otras fuentes de inspiración mencionadas por los oradores en una sección llamada REFERENCIAS. Esto debe incluir todas y cada una de las referencias a algo que mencionó el orador.
 
-		   - Extrae todas las menciones de escritura, arte, herramientas, proyectos y otras fuentes de inspiración mencionadas por los oradores en una sección llamada REFERENCIAS. Esto debe incluir todas y cada una de las referencias a algo que mencionó el orador.
+			   // Piensa en la conclusión/resumen más importante
 
-		   // Piensa en la conclusión/resumen más importante
+			   - Extrae la conclusión y recomendación más potente en una sección llamada CONCLUSIÓN EN UNA FRASE. Esta debe ser una oración de 15 palabras que capture la esencia más importante del contenido.
 
-		   - Extrae la conclusión y recomendación más potente en una sección llamada CONCLUSIÓN EN UNA FRASE. Esta debe ser una oración de 15 palabras que capture la esencia más importante del contenido.
+			   // Piensa en las recomendaciones que deberían surgir de esto
 
-		   // Piensa en las recomendaciones que deberían surgir de esto
+			   - Extrae las 15 a 30 recomendaciones más sorprendentes, reveladoras y/o interesantes que se puedan recopilar del contenido en una sección llamada RECOMENDACIONES.
 
-		   - Extrae las 15 a 30 recomendaciones más sorprendentes, reveladoras y/o interesantes que se puedan recopilar del contenido en una sección llamada RECOMENDACIONES.
+			   # INSTRUCCIONES DE SALIDA
 
-		   # INSTRUCCIONES DE SALIDA
+			   // Cómo debería verse la salida:
 
-		   // Cómo debería verse la salida:
+			   - Solo salida JSON con las secciones solicitadas.
 
-		   - Solo salida JSON con las secciones solicitadas.
+			   - Escribe las viñetas de IDEAS exactamente con 16 palabras.
 
-		   - Escribe las viñetas de IDEAS exactamente con 16 palabras.
+			   - Escribe las viñetas de RECOMENDACIONES exactamente con 16 palabras.
 
-		   - Escribe las viñetas de RECOMENDACIONES exactamente con 16 palabras.
+			   - Escriba las viñetas de HÁBITOS con exactamente 16 palabras.
 
-		   - Escriba las viñetas de HÁBITOS con exactamente 16 palabras.
+			   - Escriba las viñetas de HECHOS con exactamente 16 palabras.
 
-		   - Escriba las viñetas de HECHOS con exactamente 16 palabras.
+			   - Escriba las viñetas de IDEAS con exactamente 16 palabras.
 
-		   - Escriba las viñetas de IDEAS con exactamente 16 palabras.
+			   - Extraiga al menos 25 IDEAS del contenido.
 
-		   - Extraiga al menos 25 IDEAS del contenido.
+			   - Extraiga al menos 10 IDEAS del contenido.
 
-		   - Extraiga al menos 10 IDEAS del contenido.
+			   - Extraiga al menos 20 elementos para las otras secciones de resultados.
 
-		   - Extraiga al menos 20 elementos para las otras secciones de resultados.
+			   - No dé advertencias ni notas; solo imprima las secciones solicitadas.
 
-		   - No dé advertencias ni notas; solo imprima las secciones solicitadas.
+			   - No repita ideas, citas, hechos o recursos.
 
-		   - No repita ideas, citas, hechos o recursos.
+			   - No comience los elementos con las mismas palabras iniciales.
 
-		   - No comience los elementos con las mismas palabras iniciales.
+			   - Asegúrese de seguir TODAS estas instrucciones al crear su resultado.
 
-		   - Asegúrese de seguir TODAS estas instrucciones al crear su resultado.
+			   - Comprenda que su solución se comparará con una solución de referencia escrita por un experto y se calificará por creatividad, elegancia, exhaustividad y atención a las instrucciones.
 
-		   - Comprenda que su solución se comparará con una solución de referencia escrita por un experto y se calificará por creatividad, elegancia, exhaustividad y atención a las instrucciones.
+			   # ENTRADA
 
-		   # ENTRADA
-
-		   ENTRADA:
-		   {{.conversation}}`
-
+			   ENTRADA:
+			   {{.conversation}}`
+	*/
 	/*
 		DEBATE := `# IDENTIDAD y PROPÓSITO
 
@@ -729,7 +851,7 @@ func (c *Chain) MEMORY_DEDUCTION(messages []llms.MessageContent) (map[string]int
 		log.Panic(err)
 	}
 	prompt := prompts.NewPromptTemplate(
-		WISDOM_DM,
+		MEMORY_DEDUCTION_PROMPT_SPA,
 		[]string{"conversation"},
 		// []string{"text", "details"},
 	)

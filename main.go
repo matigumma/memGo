@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -177,11 +176,16 @@ func (m *Memory) Add(
 	/* =============chain.MEMORY_DEDUCTION process============== */
 	// Este paso obtiene informacion generalizada relevante de la data y devuelve in JSON bien estructurado.
 	/* reduction test */
+
+	fmt.Println("Data: " + data)
+
 	reductionAgent := chains.NewChain(true)
 	Messages := []llms.MessageContent{}
 	Messages = append(Messages, llms.TextParts(llms.ChatMessageTypeHuman, data))
 
-	_, err := reductionAgent.MEMORY_REDUCTION(Messages)
+	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
+	// _, err := reductionAgent.MEMORY_REDUCTION(Messages)
+	_, err := reductionAgent.MEMORY_DEDUCTION(Messages)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
@@ -723,13 +727,13 @@ func (m *Memory) Chat(query string) error {
 }
 
 func main() {
-	mc := NewMemoryConfig()
+	MemoryConfig := NewMemoryConfig()
 
-	m := NewMemory(mc)
+	m := NewMemory(MemoryConfig)
 
-	userId := "pgp"
-	agentId := "carolina"
-	runId := "entrevista-1"
+	// userId := "pgp"
+	// agentId := "carolina"
+	// runId := "entrevista-1"
 
 	/* ===mock data from transcription interview=== */
 	/*
@@ -742,43 +746,57 @@ func main() {
 		// Convert the content to a string
 		transcriptionText := string(transcriptionContent)
 	*/
-
-	// Read the content of chunk_transcription.json
-	chunkFileContent, err := os.ReadFile("/Users/agrosistemas/Mati/test-golang/chunked_transcription.json")
-	if err != nil {
-		log.Panicf("error reading chunk transcription file: %v", err)
-	}
-
-	// Parse the JSON content
-	var chunkData struct {
-		Chunks []string `json:"chunks"`
-	}
-	err = json.Unmarshal(chunkFileContent, &chunkData)
-	if err != nil {
-		log.Panicf("error unmarshaling chunk transcription data: %v", err)
-	}
-
-	metadata := map[string]interface{}{
-		"fecha": time.Now().Format(time.RFC3339),
-	}
-
-	// Iterate over each chunk and process with m.Add
-	for index, chunk := range chunkData.Chunks {
-		fmt.Println("chunk index: ", index)
-		metadata["chunk_[120]_index"] = index
-		_, err := m.Add(chunk, &userId, &agentId, &runId, metadata, nil, nil) // Pass metadata directly without using &
-		if err != nil {
-			log.Printf("Error adding memory for chunk: %v", err)
-		}
-	}
-
 	/* ===mock data from transcription interview=== */
 
-	// res, err := m.Add(transcriptionText,
-	// 	&userId, nil, nil, nil, nil, nil)
-	// if err != nil {
-	// 	log.Fatalf("Error adding memory: %v", err)
-	// }
+	/* ===chunked data from transcription audio files=== */
+	/*
+		// Read the content of chunk_transcription.json
+		chunkFileContent, err := os.ReadFile("/Users/agrosistemas/Mati/test-golang/chunked_transcription.json")
+		if err != nil {
+			log.Panicf("error reading chunk transcription file: %v", err)
+		}
+
+		// Parse the JSON content
+		var chunkData struct {
+			Chunks []string `json:"chunks"`
+		}
+		err = json.Unmarshal(chunkFileContent, &chunkData)
+		if err != nil {
+			log.Panicf("error unmarshaling chunk transcription data: %v", err)
+		}
+
+		metadata := map[string]interface{}{
+			"fecha": time.Now().Format(time.RFC3339),
+		}
+
+		// Iterate over each chunk and process with m.Add
+		for index, chunk := range chunkData.Chunks {
+			fmt.Println("chunk index: ", index)
+			metadata["chunk_[120]_index"] = index
+			_, err := m.Add(chunk, &userId, &agentId, &runId, metadata, nil, nil) // Pass metadata directly without using &
+			if err != nil {
+				log.Printf("Error adding memory for chunk: %v", err)
+			}
+		}
+	*/
+	/* ===chunked data from transcription audio files=== */
+
+	userId := "Blas Briceño"
+	agentId := "whatsapp"
+	// runId := "entrevista-1"
+
+	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
+	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
+	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
+	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
+	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
+	// text := "Hola, buen dia"
+	text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
+	_, err := m.Add(text,
+		&userId, &agentId, nil, nil, nil, nil)
+	if err != nil {
+		log.Fatalf("Error adding memory: %v", err)
+	}
 	// fmt.Printf("Memory ID: %+v\n", res)
 
 	// search, err := m.Search("hello", &userId, nil, nil, 5, nil)
