@@ -273,25 +273,54 @@ func (m *Memory) Add(
 	acumuladorMemoriasParaEvaluar := make([]MemoryItem, (len(relevantFacts) * 5))
 
 	// metadata = deductios["metadata"]
-
 	filterss := make(map[string]interface{})
-	// creo un filtro con los metadatos que me propone la deduccion
 
-	//  TODO usar algun flag para elegir si agregar o no al filtro / metadata los valores deducidos
+	// Check if metadataMap is a valid map
 	if metadataMap, ok := deductios["metadata"].(map[string]interface{}); ok {
-		filterss["scope"] = metadataMap["scope"]
-		metadata["scope"] = metadataMap["scope"]
-		filterss["sentiment"] = metadataMap["sentiment"]
-		metadata["sentiment"] = metadataMap["sentiment"]
+		// Directly assign simple types
+		if scope, ok := metadataMap["scope"].(string); ok {
+			metadata["scope"] = scope
+			// filterss["scope"] = scope
+		}
+		if sentiment, ok := metadataMap["sentiment"].(string); ok {
+			metadata["sentiment"] = sentiment
+			// filterss["sentiment"] = sentiment
+		}
 
-		if associations, ok := metadataMap["associations"].(map[string]interface{}); ok {
-			// falla interface convertion here cuando hace el convertQdrantPayload para el Search
-			metadata["related_entities"] = associations["related_entities"] // esto es un arreglo debe ser eso
-			filterss["related_entities"] = associations["related_entities"]
-			metadata["related_events"] = associations["related_events"]
-			filterss["related_events"] = associations["related_events"]
-			metadata["tags"] = associations["tags"]
-			filterss["tags"] = associations["tags"]
+		// Convert related_entities to a slice of strings
+		if relatedEntities, ok := metadataMap["related_entities"].([]interface{}); ok {
+			var entities []string
+			for _, entity := range relatedEntities {
+				if strEntity, ok := entity.(string); ok {
+					entities = append(entities, strEntity)
+				}
+			}
+			metadata["related_entities"] = entities
+			// filterss["related_entities"] = entities
+		}
+
+		// Convert related_events to a slice of strings
+		if relatedEvents, ok := metadataMap["related_events"].([]interface{}); ok {
+			var events []string
+			for _, event := range relatedEvents {
+				if strEvent, ok := event.(string); ok {
+					events = append(events, strEvent)
+				}
+			}
+			metadata["related_events"] = events
+			// filterss["related_events"] = events
+		}
+
+		// Convert tags to a slice of strings
+		if tags, ok := metadataMap["tags"].([]interface{}); ok {
+			var tagList []string
+			for _, tag := range tags {
+				if strTag, ok := tag.(string); ok {
+					tagList = append(tagList, strTag)
+				}
+			}
+			metadata["tags"] = tagList
+			// filterss["tags"] = tagList
 		}
 	}
 
@@ -985,8 +1014,8 @@ func main() {
 	agentId := "whatsapp"
 	// runId := "entrevista-1"
 
-	text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
-	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
+	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
+	text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
 	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
 	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
 	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"

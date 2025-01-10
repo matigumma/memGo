@@ -260,3 +260,45 @@ Guidelines:
 
 Here are the details of the task:
 `
+
+const MEMORY_DEDUCTION_predictions_PROMPT_SPA = `Deduce los hechos relevantes en términos de sus intenciones, preferencias significativas y recuerdos importantes del texto proporcionado.
+Asegúrate de que los hechos extraídos estén formulados desde la perspectiva de la persona que hace el comentario.
+Solo devuelve los hechos relevantes, preferencias significativas y recuerdos importantes en viñetas:
+Texto en lenguaje natural: {{.conversation}}
+
+Restricciones para deducir hechos relevantes, preferencias significativas y recuerdos importantes:
+- Evalua detenidamente el texto para identificar si hay contenido suficiente como para deducir hechos relevantes, preferencias significativas y recuerdos importantes. 
+- De no ser suficiente, no deducir y devolver el el objeto con las propiedades vacias.
+- Si no se ha deducido nada, No completes metadata.
+- Los hechos relevantes, preferencias significativas y recuerdos importantes deben ser concisos e informativos.
+- La extrae la metadata que creas conveniente para acompañar los hechos relevantes, preferencias significativas y recuerdos importantes. 
+- Responde en el mismo idioma del texto.
+- Respuesta en formato JSON con una clave como "relevant_facts", otra para "predictions", y otra para "metadata". Los valores correspondientes serán listas de cadenas.
+- Para cada hecho relevante, puede o no haber una predicción concisa y relevante sobre lo que podría suceder a continuación. Las predicciones deben ser específicas, basadas en el contexto del hecho, y reflejar posibles acciones futuras o resultados esperados.
+
+Ten en cuenta los siguientes hechos pasados para crear tus predicciones: "La ultima reunion de brainstorming se retraso 30 minutos", "Pocos invitados asisten a las reuniones en verano", "Las reuniones de brainstorming son las que mas gustan"
+
+ejemplo:
+{
+	"relevant_facts": [
+		"Está preparando un documento de prompts",
+		"El documento es para tres equipos: copy, diseño y contenido",
+		"Busca recursos bibliográficos para ampliar el material"
+	],
+	"predictions": [
+		"El documento será completado y distribuido.",
+		"Los equipos colaborarán para integrar sus aportes.",
+		"Los recursos bibliográficos enriquecerán el contenido."
+	],
+	"metadata": {
+		"scope": "universitario",
+		"sentiment": "neutral",
+		"associations": {
+			"related_entities": ["copy", "diseño", "contenido"],
+			"related_events": ["creación de documentos", "investigación de recursos"],
+			"tags": ["trabajo", "documentos", "prompts", "equipos"]
+		},
+	}
+}
+
+¿Hechos relevantes, preferencias significativas y recuerdos importantes deducidos:?`

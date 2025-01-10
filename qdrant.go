@@ -54,10 +54,37 @@ func (q *Qdrant) Insert(vectors [][]float64, ids []string, payloads []map[string
 		for j, val := range vector {
 			float32Vector[j] = float32(val)
 		}
+
+		// Convert payloads to qdrant.Value
+		convertedPayload := make(map[string]*qdrant.Value)
+		for key, value := range payloads[i] {
+			switch v := value.(type) {
+			case string:
+				convertedPayload[key] = qdrant.NewValueString(v)
+			case int:
+				convertedPayload[key] = qdrant.NewValueInt(int64(v))
+			case int64:
+				convertedPayload[key] = qdrant.NewValueInt(v)
+			case float64:
+				convertedPayload[key] = qdrant.NewValueDouble(v)
+			case bool:
+				convertedPayload[key] = qdrant.NewValueBool(v)
+			case []string:
+				// Convert []string to qdrant.Value_ListValue
+				listValues := make([]*qdrant.Value, len(v))
+				for j, str := range v {
+					listValues[j] = qdrant.NewValueString(str)
+				}
+				convertedPayload[key] = qdrant.NewValueList(&qdrant.ListValue{Values: listValues})
+			default:
+				panic(fmt.Sprintf("Unsupported payload type: %T for key %s", value, key))
+			}
+		}
+
 		points[i] = &qdrant.PointStruct{
 			Id:      qdrant.NewID(ids[i]),
 			Vectors: qdrant.NewVectors(float32Vector...),
-			Payload: qdrant.NewValueMap(payloads[i]),
+			Payload: convertedPayload,
 		}
 	}
 
@@ -82,18 +109,38 @@ func (q *Qdrant) _createFilter(filters map[string]interface{}) *qdrant.Filter {
 		case string:
 			conditions = append(conditions, qdrant.NewMatchKeyword(key, v))
 		case float64:
-			// Convert float64 to int64 for NewMatchInt
 			conditions = append(conditions, qdrant.NewMatchInt(key, int64(v)))
 		case float32:
-			// Add support for float32
 			conditions = append(conditions, qdrant.NewMatchInt(key, int64(v)))
 		case int:
 			conditions = append(conditions, qdrant.NewMatchInt(key, int64(v)))
 		case int64:
-			// Add direct support for int64
 			conditions = append(conditions, qdrant.NewMatchInt(key, v))
 		case bool:
 			conditions = append(conditions, qdrant.NewMatchBool(key, v))
+		case []interface{}:
+			// Handle slices by creating a condition for each element
+			for _, item := range v {
+				switch item := item.(type) {
+				case string:
+					conditions = append(conditions, qdrant.NewMatchKeyword(key, item))
+				case int:
+					conditions = append(conditions, qdrant.NewMatchInt(key, int64(item)))
+				case int64:
+					conditions = append(conditions, qdrant.NewMatchInt(key, item))
+				case bool:
+					conditions = append(conditions, qdrant.NewMatchBool(key, item))
+				default:
+					panic(errors.New(fmt.Sprintf("Unsupported slice item type: %T for key %s", item, key)))
+				}
+			}
+		case []string:
+			// Handle slices of strings
+			for _, item := range v {
+				conditions = append(conditions, qdrant.NewMatchKeyword(key, item))
+			}
+		default:
+			panic(errors.New(fmt.Sprintf("Unsupported filter value type: %T for key %s", value, key)))
 		}
 	}
 
@@ -151,21 +198,44 @@ func (q *Qdrant) Search(query []float32, limit int, filters map[string]interface
 func convertQdrantPayload(payload map[string]*qdrant.Value) map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, v := range payload {
-		switch {
-		case v.GetKind().(*qdrant.Value_StringValue) != nil:
+		// fmt.Printf("Processing key: %s, value kind: %T\n", k, v)
+		switch kind := v.GetKind().(type) {
+		case *qdrant.Value_StringValue:
 			result[k] = v.GetStringValue()
-		case v.GetKind().(*qdrant.Value_IntegerValue) != nil:
+		case *qdrant.Value_IntegerValue:
 			result[k] = v.GetIntegerValue()
-		case v.GetKind().(*qdrant.Value_DoubleValue) != nil:
+		case *qdrant.Value_DoubleValue:
 			result[k] = v.GetDoubleValue()
-		case v.GetKind().(*qdrant.Value_BoolValue) != nil:
+		case *qdrant.Value_BoolValue:
 			result[k] = v.GetBoolValue()
-		case v.GetKind().(*qdrant.Value_ListValue) != nil:
-			result[k] = v.GetListValue()
-		case v.GetKind().(*qdrant.Value_StructValue) != nil:
+		case *qdrant.Value_ListValue:
+			// Handle list values
+			listValue := v.GetListValue()
+			convertedList := make([]interface{}, len(listValue.Values))
+			for i, item := range listValue.Values {
+				// Convert each item in the list to its appropriate type
+				switch itemKind := item.GetKind().(type) {
+				case *qdrant.Value_StringValue:
+					convertedList[i] = item.GetStringValue()
+				case *qdrant.Value_IntegerValue:
+					convertedList[i] = item.GetIntegerValue()
+				case *qdrant.Value_DoubleValue:
+					convertedList[i] = item.GetDoubleValue()
+				case *qdrant.Value_BoolValue:
+					convertedList[i] = item.GetBoolValue()
+				case *qdrant.Value_NullValue:
+					convertedList[i] = nil
+				default:
+					panic(errors.New(fmt.Sprintf("Unsupported list item kind: %T for key %s", itemKind, k)))
+				}
+			}
+			result[k] = convertedList // Store the converted list
+		case *qdrant.Value_StructValue:
 			result[k] = v.GetStructValue()
-		case v.GetKind().(*qdrant.Value_NullValue) != nil:
+		case *qdrant.Value_NullValue:
 			result[k] = nil
+		default:
+			panic(errors.New(fmt.Sprintf("Unsupported value kind: %T for key %s", kind, k)))
 		}
 	}
 	return result

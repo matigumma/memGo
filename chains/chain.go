@@ -234,10 +234,9 @@ Restricciones para deducir hechos relevantes, preferencias significativas y recu
 - De no ser suficiente, no deducir y devolver el el objeto con las propiedades vacias.
 - Si no se ha deducido nada, No completes metadata.
 - Los hechos relevantes, preferencias significativas y recuerdos importantes deben ser concisos e informativos.
-- La extrae la metadata que creas conveniente para acompañar los hechos relevantes, preferencias significativas y recuerdos importantes. 
+- La extrae la metadata (scope, sentiment related_entities, related_events, tags) que creas conveniente para acompañar los hechos relevantes, preferencias significativas y recuerdos importantes. 
+- Respuesta en formato JSON con una clave como "relevant_facts" y otra para "metadata". Los valores correspondientes serán listas de cadenas.
 - Responde en el mismo idioma del texto.
-- Respuesta en formato JSON con una clave como "relevant_facts" y otra para "metadata" y el valor correspondiente será una lista de cadenas.
-- No uses comillas invertidas para el formato JSON.
 
 ejemplo:
 {
@@ -249,11 +248,9 @@ ejemplo:
 	"metadata": {
 		"scope": "universitario",
 		"sentiment": "neutral",
-		"associations": {
-			"related_entities": ["copy", "diseño", "contenido"],
-			"related_events": ["creación de documentos", "investigación de recursos"],
-			"tags": ["trabajo", "documentos", "prompts", "equipos"]
-		},
+		"related_entities": ["documentos", "equipos"],
+		"related_events": ["creación de documentos", "investigación de recursos"],
+		"tags": ["trabajo", "documentos", "prompts", "equipos"]
 	}
 }
 
