@@ -200,7 +200,7 @@ func (m *Memory) Add(
 		}, nil
 	}
 
-	fmt.Println("Relevant facts encontrados: " + strconv.Itoa(cantFacts))
+	fmt.Println(fmt.Println("Relevant facts deducidos: " + strconv.Itoa(cantFacts)))
 	/* end reduction test */
 
 	// HASTA ACA TENEMOS:
@@ -352,16 +352,20 @@ func (m *Memory) Add(
 			// 2025/01/09 15:40:46 Creating memory with data=Está buscando material sobre ingeniería de prompts
 			// result of creating memory tool: 1ca52a41-3393-4777-9c0a-2a25a039770e
 			// en este caso deberian agregarse las nuevas memorias al vectorstore
-			s, err := m.createMemoryTool(map[string]interface{}{"data": factStr, "metadata": metadata})
-			if err != nil {
-				return nil, fmt.Errorf("error creating memory tool: %w", err)
-			}
+			/*
+				s, err := m.createMemoryTool(map[string]interface{}{"data": factStr, "metadata": metadata})
+				if err != nil {
+					return nil, fmt.Errorf("error creating memory tool: %w", err)
+				}
 
-			fmt.Println("result of creating memory tool: " + s)
+				fmt.Println("result of creating memory tool: " + s)
+			*/
 			continue
 		}
 
 		fmt.Printf("Existing memories for fact %d: %d\n", fact_index, len(existingMemoriesRaw))
+		fmt.Println(factStr)
+		fmt.Println("---------------------------------------------")
 
 		for i, mem := range existingMemoriesRaw {
 			Score := &mem.Score
@@ -369,7 +373,10 @@ func (m *Memory) Add(
 			Metadata := mem.Payload
 			Memory := mem.Payload["data"].(string)
 
-			fmt.Printf("%d. Score: %f, Metadata: %v, Memory: %s\n", i, *Score, Metadata, Memory)
+			fmt.Printf("f:%d : m:%d - encontrado: %.6f, \n", fact_index, i, *Score)
+			fmt.Printf("*Memory: %s\n", mem.Payload["data"])
+			fmt.Printf("*Metadata: %s - %v - %v - %v\n", mem.Payload["scope"], mem.Payload["related_entities"], mem.Payload["related_events"], mem.Payload["tags"])
+			fmt.Println("")
 			// Existing memories for fact 0: 1
 			// 0. Score: 1.000000, Metadata: map[agent_id:whatsapp created_at:2025-01-09T10:40:47-08:00 data:Está buscando material sobre ingeniería de prompts hash:6e53731be7ca1489e95b9e3cdcc3c58e user_id:Blas Briceño], Memory: Está buscando material sobre ingeniería de prompts
 			// guardar en un acumulador para procesarlas luego
@@ -408,7 +415,7 @@ func (m *Memory) Add(
 		// _ = existingMemoriesRaw
 
 		// Process existingMemoriesRaw as needed
-
+		fmt.Println("")
 	} // fin for range relevantFacts
 
 	/* end Search for related memories test */
@@ -1014,8 +1021,8 @@ func main() {
 	agentId := "whatsapp"
 	// runId := "entrevista-1"
 
-	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
-	text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
+	text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
+	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
 	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
 	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
 	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"

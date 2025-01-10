@@ -145,9 +145,15 @@ func (q *Qdrant) _createFilter(filters map[string]interface{}) *qdrant.Filter {
 	}
 
 	// Return the final filter with all conditions
+	// OJO TODO: REVISAR PORQUE NO SON TODAS MUST LAS CONDICIONES , EN CASO DE TAGS O ENTITIES PODRIA SER
 	return &qdrant.Filter{
-		Must: conditions,
+		// Must: conditions,
+		Should: conditions,
 	}
+}
+
+func Float32Ptr(f float32) *float32 {
+	return &f
 }
 
 func (q *Qdrant) Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
@@ -162,10 +168,10 @@ func (q *Qdrant) Search(query []float32, limit int, filters map[string]interface
 		Limit:          &limite,
 		Filter:         qdrantFilters,
 		WithPayload:    qdrant.NewWithPayload(true),
+		ScoreThreshold: Float32Ptr(0.9), // coincidencia con un minimo del ultimo decil
 		// Payload and vector in the result:
 		// WithVectors:    qdrant.NewWithVectors(true),
 	}
-
 	// Add filter if provided
 	if filters != nil {
 		// Convert filters to Qdrant filter format
