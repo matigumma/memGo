@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/matigumma/memGo/models"
+	"github.com/matigumma/memGo/utils"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
@@ -18,7 +20,7 @@ type OpenAILLM struct {
 
 func NewOpenAILLM(config map[string]interface{}) *OpenAILLM {
 	baseConfig := BaseLlmConfig{}
-	mapToStruct(config, &baseConfig)
+	utils.MapToStruct(config, &baseConfig)
 
 	if baseConfig.Model == nil {
 		defaultModel := "gpt-4o-mini"
@@ -49,7 +51,7 @@ func NewOpenAILLM(config map[string]interface{}) *OpenAILLM {
 // object that is either a string or a map with "content" and "tool_calls" keys.
 func (o *OpenAILLM) parseResponse(
 	response *llms.ContentResponse, // The raw response from API
-	tools []Tool, // List of tools
+	tools []models.Tool, // List of tools
 ) (interface{}, error) {
 	// Check if tools are provided
 	if tools != nil {
@@ -88,7 +90,7 @@ func (o *OpenAILLM) parseResponse(
 // generate response
 func (o *OpenAILLM) GenerateResponse(
 	messages []llms.MessageContent, // List of messages
-	tools []Tool, // List of tools
+	tools []models.Tool, // List of tools
 	jsonMode bool, // Flag to indicate JSON mode
 	toolChoice string, // Tool choice
 ) (interface{}, error) {

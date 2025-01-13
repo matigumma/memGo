@@ -7,6 +7,9 @@ import (
 	"log"
 	"strings"
 
+	"github.com/matigumma/memGo/models"
+	"github.com/matigumma/memGo/tools"
+	"github.com/matigumma/memGo/utils"
 	"github.com/tmc/langchaingo/chains"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -902,4 +905,90 @@ func (c *Chain) MEMORY_DEDUCTION2(messages []llms.MessageContent) (map[string]in
 	// }
 
 	return result, nil
+}
+
+func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFacts []interface{}) (map[string]interface{}, error) {
+	fmt.Println("Chain.MEMORY_UPDATER")
+
+	/* prepare */
+	//
+	serializedExistingMemories := make([]map[string]interface{}, len(existingMemories))
+	for i, item := range existingMemories {
+		if item.Score != nil {
+			serializedItem := map[string]interface{}{
+				"id":     item.ID,
+				"memory": item.Memory,
+				"score":  *item.Score,
+			}
+			serializedExistingMemories[i] = serializedItem
+		}
+	}
+
+	var relevantFactsText string
+	for _, fact := range relevantFacts {
+		if factStr, ok := fact.(string); ok {
+			relevantFactsText += factStr + " "
+		} else {
+			log.Printf("Skipping non-string fact: %v", fact)
+		}
+	}
+	relevantFactsText = strings.TrimSpace(relevantFactsText) // Trim any trailing space
+	/* prepare */
+
+	tools := []models.Tool{tools.ADD_MEMORY_TOOL, tools.UPDATE_MEMORY_TOOL, tools.DELETE_MEMORY_TOOL}
+
+	// model := "gpt-3.5-turbo" //
+	model := "gpt-4o-mini" //
+	// model := "gpt-4o"
+
+	llm, err := openai.New(openai.WithModel(model))
+	if err != nil {
+		log.Panic(err)
+	}
+
+	ctx := context.Background()
+
+	fullPrompt := utils.GetUpdateMemoryMessages(serializedExistingMemories, relevantFactsText)
+
+	messageHistory := []llms.MessageContent{fullPrompt}
+
+	resp, err := llm.GenerateContent(ctx, messageHistory, llms.WithTools(tools))
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// c.debugPrint("Using model: " + model)
+
+	messageHistory = updateMessageHistory(messageHistory, resp)
+
+	c.debugPrint("Output from LLM: " + fmt.Sprintf("%+v", messageHistory[1]))
+	// Execute tool calls requested by the model
+	messageHistory = c.executeToolCalls(ctx, llm, messageHistory, resp)
+
+	return map[string]interface{}{}, nil
+}
+
+// updateMessageHistory updates the message history with the assistant's
+// response and requested tool calls.
+func updateMessageHistory(messageHistory []llms.MessageContent, resp *llms.ContentResponse) []llms.MessageContent {
+	respchoice := resp.Choices[0]
+
+	assistantResponse := llms.TextParts(llms.ChatMessageTypeAI, respchoice.Content)
+	for _, tc := range respchoice.ToolCalls {
+		assistantResponse.Parts = append(assistantResponse.Parts, tc)
+	}
+	return append(messageHistory, assistantResponse)
+}
+
+func (c *Chain) executeToolCalls(ctx context.Context, llm llms.Model, messageHistory []llms.MessageContent, resp *llms.ContentResponse) []llms.MessageContent {
+	fmt.Println("Executing", len(resp.Choices[0].ToolCalls), "tool calls")
+	for _, toolCall := range resp.Choices[0].ToolCalls {
+		switch toolCall.FunctionCall.Name {
+		default:
+			c.debugPrint("Unsupported tool: " + toolCall.FunctionCall.Name)
+			c.debugPrint("Call: " + fmt.Sprintf("%+v", toolCall.FunctionCall.Arguments))
+		}
+	}
+
+	return messageHistory
 }

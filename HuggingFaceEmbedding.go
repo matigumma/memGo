@@ -1,6 +1,10 @@
 package main
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/matigumma/memGo/utils"
+)
 
 type HuggingFaceEmbedding struct {
 	config BaseEmbedderConfig
@@ -8,7 +12,7 @@ type HuggingFaceEmbedding struct {
 
 func NewHuggingFaceEmbedding(config map[string]interface{}) Embedder {
 	baseConfig := BaseEmbedderConfig{}
-	mapToStruct(config, &baseConfig)
+	utils.MapToStruct(config, &baseConfig)
 	return &HuggingFaceEmbedding{config: baseConfig}
 }
 

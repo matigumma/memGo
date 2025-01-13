@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/matigumma/memGo/utils"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
@@ -17,7 +18,7 @@ type OpenAIEmbedding struct {
 
 func NewOpenAIEmbedding(config map[string]interface{}) Embedder {
 	baseConfig := BaseEmbedderConfig{}
-	mapToStruct(config, &baseConfig)
+	utils.MapToStruct(config, &baseConfig)
 
 	if baseConfig.Model == nil {
 		defaultModel := "text-embedding-3-small"

@@ -1,6 +1,10 @@
 package main
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/matigumma/memGo/utils"
+)
 
 type AzureOpenAIEmbedding struct {
 	config BaseEmbedderConfig
@@ -8,7 +12,7 @@ type AzureOpenAIEmbedding struct {
 
 func NewAzureOpenAIEmbedding(config map[string]interface{}) Embedder {
 	baseConfig := BaseEmbedderConfig{}
-	mapToStruct(config, &baseConfig)
+	utils.MapToStruct(config, &baseConfig)
 	return &AzureOpenAIEmbedding{config: baseConfig}
 }
 

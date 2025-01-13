@@ -1,10 +1,7 @@
-package main
+package models
 
 import "github.com/tmc/langchaingo/llms"
 
-type Tool = llms.Tool
-
-// MemoryItem - Corresponds to the Python MemoryItem class
 type MemoryItem struct {
 	ID        string                 `json:"id"`
 	Memory    string                 `json:"memory"`
@@ -14,3 +11,5 @@ type MemoryItem struct {
 	CreatedAt *string                `json:"created_at,omitempty"`
 	UpdatedAt *string                `json:"updated_at,omitempty"`
 }
+
+type Tool = llms.Tool

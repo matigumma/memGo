@@ -12,8 +12,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/matigumma/memGo/chains"
+	"github.com/matigumma/memGo/models"
 	"github.com/matigumma/memGo/sqlitemanager"
 	"github.com/matigumma/memGo/telemetry"
+	"github.com/matigumma/memGo/utils"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -48,7 +50,7 @@ type SearchResult struct {
 // type LLM interface{}
 
 type LLM interface {
-	GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool, toolChoice string) (interface{}, error)
+	GenerateResponse(messages []llms.MessageContent, tools []models.Tool, jsonMode bool, toolChoice string) (interface{}, error)
 	// GenerateResponseWithoutTools(messages []map[string]string) (string, error)
 	// Add other methods as needed
 }
@@ -270,7 +272,7 @@ func (m *Memory) Add(
 	}
 
 	// el tamaño maximo es de la cantidad de relevant_facts * searchs limit de 5
-	acumuladorMemoriasParaEvaluar := make([]MemoryItem, (len(relevantFacts) * 5))
+	acumuladorMemoriasParaEvaluar := make([]models.MemoryItem, (len(relevantFacts) * 5))
 
 	// metadata = deductios["metadata"]
 	filterss := make(map[string]interface{})
@@ -360,6 +362,7 @@ func (m *Memory) Add(
 
 				fmt.Println("result of creating memory tool: " + s)
 			*/
+			fmt.Println("")
 			continue
 		}
 
@@ -367,6 +370,8 @@ func (m *Memory) Add(
 		fmt.Println(factStr)
 		fmt.Println("---------------------------------------------")
 
+		// De aca en adelante encontre memorias en el vectorstore para con este facto.
+		// creo un MemoryItem por cada una y las acumulo para evaluar luego.
 		for i, mem := range existingMemoriesRaw {
 			Score := &mem.Score
 			hash := mem.Payload["hash"].(string)
@@ -380,7 +385,7 @@ func (m *Memory) Add(
 			// Existing memories for fact 0: 1
 			// 0. Score: 1.000000, Metadata: map[agent_id:whatsapp created_at:2025-01-09T10:40:47-08:00 data:Está buscando material sobre ingeniería de prompts hash:6e53731be7ca1489e95b9e3cdcc3c58e user_id:Blas Briceño], Memory: Está buscando material sobre ingeniería de prompts
 			// guardar en un acumulador para procesarlas luego
-			acumuladorMemoriasParaEvaluar = append(acumuladorMemoriasParaEvaluar, MemoryItem{
+			acumuladorMemoriasParaEvaluar = append(acumuladorMemoriasParaEvaluar, models.MemoryItem{
 				ID:       fmt.Sprintf("%d_%s", fact_index, mem.ID),
 				Score:    Score,
 				Memory:   Memory,
@@ -389,7 +394,6 @@ func (m *Memory) Add(
 			})
 		}
 
-		// INSERT_YOUR_CODE
 		// To search in acumuladorMemoriasParaEvaluar by MemoryItem.ID, you can use a simple loop to iterate over the slice and check each item's ID.
 		// Here's a function to perform the search:
 
@@ -418,104 +422,24 @@ func (m *Memory) Add(
 		fmt.Println("")
 	} // fin for range relevantFacts
 
+	fmt.Println("acum: " + strconv.Itoa(len(acumuladorMemoriasParaEvaluar)))
+
 	/* end Search for related memories test */
 
-	// // 3. searches the vector store for existing memories similar to the new facts and retrieves their IDs and text
-	// // create embeddings for the data
-	// _, embeddings32, err := m.embeddingModel.Embed(data)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("error embedding data: %w", err)
-	// }
-
-	// existingMemoriesRaw, err := m.vectorStore.Search(embeddings32, 5, filters)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("error searching existing memories: %w", err)
-	// }
-
-	/*
-		// deduccion de factos en el imput del usuario q valgan la pena
-		currentPrompt := MEMORY_DEDUCTION_PROMPT // OJO ESTA VERSION ES SUPER REDUCIDA.. dejo en prompts el original
-		if prompt != nil {
-			// uso el prompt del usuario si lo pasa
-			currentPrompt = *prompt
-		}
-		formattedPrompt := fmt.Sprintf(currentPrompt, data, metadata)
-
-		inputMessages := []llms.MessageContent{}
-
-		inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeSystem, "You are an expert at deducing facts, preferences and memories from unstructured text."))
-		inputMessages = append(inputMessages, llms.TextParts(llms.ChatMessageTypeHuman, formattedPrompt))
-
-		// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
-		//new_retrieved_facts
-		extractedMemories, err := m.llm.GenerateResponse(inputMessages, nil, true)
-		if err != nil {
-			return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
-		}
-	*/
-
-	// log.Printf("Extracted factos: %+v \n", extractedMemories)
 	/* ============END chain.MEMORY_DEDUCTION agent=============== */
+
+	fcallAgent := chains.NewChain(true)
+
+	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
+	// _, err := reductionAgent.MEMORY_REDUCTION(Messages)
+	fcalls, err := fcallAgent.MEMORY_UPDATER(acumuladorMemoriasParaEvaluar, relevantFacts)
+	if err != nil {
+		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
+	}
+
+	_ = fcalls
+
 	/*
-		var newRetrievedFacts []interface{}
-		extractedMemoriesStr, ok := extractedMemories.(string)
-		if !ok {
-			log.Printf("Error: extractedMemories is not a string")
-			newRetrievedFacts = []interface{}{}
-		} else {
-			err = json.Unmarshal([]byte(extractedMemoriesStr), &newRetrievedFacts)
-			if err != nil {
-				log.Printf("Error in newRetrievedFacts: %v", err)
-				newRetrievedFacts = []interface{}{}
-			}
-		}
-
-		log.Printf("RetrievedFacts json factos: %+v \n", newRetrievedFacts)
-
-		// 3. searches the vector store for existing memories similar to the new facts and retrieves their IDs and text
-		// create embeddings for the data
-		embeddings, err := m.embeddingModel.Embed(data)
-		if err != nil {
-			return nil, fmt.Errorf("error embedding data: %w", err)
-		}
-
-		existingMemoriesRaw, err := m.vectorStore.Search(embeddings, 5, filters)
-		if err != nil {
-			return nil, fmt.Errorf("error searching existing memories: %w", err)
-		}
-
-		existingMemories := make([]MemoryItem, len(existingMemoriesRaw))
-		for i, mem := range existingMemoriesRaw {
-			memoryItem := MemoryItem{
-				ID:       mem.ID,
-				Score:    &mem.Score,
-				Metadata: mem.Payload,
-				Memory:   mem.Payload["data"].(string), // Assuming "data" is always a string
-			}
-			existingMemories[i] = memoryItem
-		}
-
-		serializedExistingMemories := make([]map[string]interface{}, len(existingMemories))
-		for i, item := range existingMemories {
-			serializedItem := map[string]interface{}{
-				"id":     item.ID,
-				"memory": item.Memory,
-				"score":  item.Score,
-			}
-			serializedExistingMemories[i] = serializedItem
-		}
-		log.Printf("Total existing memories: %d", len(existingMemories))
-
-		messages := getUpdateMemoryMessages(serializedExistingMemories, newRetrievedFacts)
-
-		tools := []Tool{ADD_MEMORY_TOOL, UPDATE_MEMORY_TOOL, DELETE_MEMORY_TOOL}
-
-		// 4. generates another prompt to update the memories based on the new facts and sends it to the LLM
-		response, err := m.llm.GenerateResponse([]llms.MessageContent{messages}, tools, false)
-		if err != nil {
-			return nil, fmt.Errorf("error generating response with tools: %w", err)
-		}
-
 		responseMap, ok := response.(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf("error: response is not a map[string]interface{}")
@@ -640,7 +564,7 @@ func (m *Memory) Get(memoryID string) (map[string]interface{}, error) {
 		memoryItem["metadata"] = additionalMetadata
 	}
 
-	result := mergeMaps(memoryItem, filters)
+	result := utils.MergeMaps(memoryItem, filters)
 	return result, nil
 }
 
@@ -1021,13 +945,13 @@ func main() {
 	agentId := "whatsapp"
 	// runId := "entrevista-1"
 
-	text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
+	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
 	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
 	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
 	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
 	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
 	// text := "Hola, buen dia"
-	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
+	text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
 	res, err := m.Add(
 		text,     // data
 		&userId,  // user_id

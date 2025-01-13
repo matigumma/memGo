@@ -1,8 +1,11 @@
-package main
+package tools
 
-import "github.com/tmc/langchaingo/llms"
+import (
+	"github.com/matigumma/memGo/models"
+	"github.com/tmc/langchaingo/llms"
+)
 
-var ADD_MEMORY_TOOL = Tool{
+var ADD_MEMORY_TOOL = models.Tool{
 	Type: "function",
 	Function: &llms.FunctionDefinition{
 		Name:        "add_memory",
@@ -20,7 +23,7 @@ var ADD_MEMORY_TOOL = Tool{
 	},
 }
 
-var UPDATE_MEMORY_TOOL = Tool{
+var UPDATE_MEMORY_TOOL = models.Tool{
 	Type: "function",
 	Function: &llms.FunctionDefinition{
 		Name:        "update_memory",
@@ -42,7 +45,7 @@ var UPDATE_MEMORY_TOOL = Tool{
 	},
 }
 
-var DELETE_MEMORY_TOOL = Tool{
+var DELETE_MEMORY_TOOL = models.Tool{
 	Type: "function",
 	Function: &llms.FunctionDefinition{
 		Name:        "delete_memory",

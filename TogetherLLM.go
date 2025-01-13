@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 
+	"github.com/matigumma/memGo/models"
+	"github.com/matigumma/memGo/utils"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -12,11 +14,11 @@ type TogetherLLM struct {
 
 func NewTogetherLLM(config map[string]interface{}) LLM {
 	baseConfig := BaseLlmConfig{}
-	mapToStruct(config, &baseConfig)
+	utils.MapToStruct(config, &baseConfig)
 	return &TogetherLLM{config: baseConfig}
 }
 
-func (t *TogetherLLM) GenerateResponse(messages []llms.MessageContent, tools []Tool, jsonMode bool, toolChoice string) (interface{}, error) {
+func (t *TogetherLLM) GenerateResponse(messages []llms.MessageContent, tools []models.Tool, jsonMode bool, toolChoice string) (interface{}, error) {
 	return nil, errors.New("TogetherLLM.GenerateResponse not implemented")
 }
 

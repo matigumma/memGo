@@ -1,4 +1,4 @@
-package main
+package prompts
 
 const GET_UPDATE_MEMORY_PROMPT_FUNCTION_CALLING = `
 You are a smart memory manager which controls the memory of a system. You can perform four operations: (1) add into the memory, (2) update the memory, (3) delete from the memory, and (4) no change.
@@ -153,7 +153,7 @@ Below is the current content of my memory which I have collected till now. You h
 
 %s
 
-The new retrieved facts are mentioned in the triple backticks. You have to analyze the new retrieved facts and determine whether these facts should be added, updated, or deleted in the memory.
+You have to analyze this next new retrieved facts and determine whether these facts should be added, updated, or deleted in the memory.
 
 %s
 

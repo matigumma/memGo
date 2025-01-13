@@ -1,14 +1,15 @@
-package main
+package utils
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/matigumma/memGo/prompts"
 	"github.com/tmc/langchaingo/llms"
 )
 
-func mergeMaps(m1, m2 map[string]interface{}) map[string]interface{} {
+func MergeMaps(m1, m2 map[string]interface{}) map[string]interface{} {
 	merged := make(map[string]interface{})
 	for k, v := range m1 {
 		merged[k] = v
@@ -19,7 +20,7 @@ func mergeMaps(m1, m2 map[string]interface{}) map[string]interface{} {
 	return merged
 }
 
-func trimMemorySuffix(s string) string {
+func TrimMemorySuffix(s string) string {
 	if len(s) > len("memory") && s[len(s)-len("memory"):] == "memory" {
 		return s[:len(s)-len("memory")]
 	}
@@ -27,22 +28,24 @@ func trimMemorySuffix(s string) string {
 }
 
 // getUpdateMemoryPrompt formats the update memory prompt
-func getUpdateMemoryPrompt(existingMemories []map[string]interface{}, memory string, template string) string {
+func GetUpdateMemoryPrompt(existingMemories []map[string]interface{}, memory string, template string) string {
 	var sb strings.Builder
 	for _, mem := range existingMemories {
-		sb.WriteString(fmt.Sprintf("- ID: %s, Memory: %s, Score: %v\n", mem["id"], mem["memory"], mem["score"]))
+		if mem["score"] != nil {
+			sb.WriteString(fmt.Sprintf("- ID: %s, Memory: %s, Score: %v\n", mem["id"], mem["memory"], mem["score"]))
+		}
 	}
 	return fmt.Sprintf(template, sb.String(), memory)
 }
 
 // getUpdateMemoryMessages generates the messages for the LLM
-func getUpdateMemoryMessages(existingMemories []map[string]interface{}, memory string) llms.MessageContent {
-	prompt := getUpdateMemoryPrompt(existingMemories, memory, UPDATE_MEMORY_PROMPT)
+func GetUpdateMemoryMessages(existingMemories []map[string]interface{}, memory string) llms.MessageContent {
+	prompt := GetUpdateMemoryPrompt(existingMemories, memory, prompts.GET_UPDATE_MEMORY_PROMPT_FUNCTION_CALLING)
 	return llms.TextParts(llms.ChatMessageTypeHuman, prompt)
 }
 
 // --- Helper function to map a map to a struct ---
-func mapToStruct(config map[string]interface{}, target interface{}) error {
+func MapToStruct(config map[string]interface{}, target interface{}) error {
 	configBytes, err := json.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("error marshaling config: %w", err)
