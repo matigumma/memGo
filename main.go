@@ -432,85 +432,65 @@ func (m *Memory) Add(
 
 	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
 	// _, err := reductionAgent.MEMORY_REDUCTION(Messages)
-	fcalls, err := fcallAgent.MEMORY_UPDATER(acumuladorMemoriasParaEvaluar, relevantFacts)
+	responseMap, err := fcallAgent.MEMORY_UPDATER(acumuladorMemoriasParaEvaluar, relevantFacts)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
 
-	_ = fcalls
+	fmt.Println(fmt.Println("PHASE 2: MEMORY_UPDATER OK"))
 
-	/*
-		responseMap, ok := response.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("error: response is not a map[string]interface{}")
+	// 5. processes the LLM's response, which contains actions to add, update, or delete memories
+	toolCalls := responseMap.ToolCalls
+	functionResults := make([]map[string]interface{}, 0)
+
+	if ok {
+		availableFunctions := map[string]func(map[string]interface{}) (string, error){
+			"add_memory":    m.createMemoryTool,
+			"update_memory": m.updateMemoryToolWrapper,
+			"delete_memory": m.deleteMemoryTool,
 		}
 
-		// 5. processes the LLM's response, which contains actions to add, update, or delete memories
-		toolCalls, ok := responseMap["tool_calls"].([]interface{})
-		functionResults := make([]map[string]interface{}, 0)
-
-		if ok {
-			availableFunctions := map[string]func(map[string]interface{}) (string, error){
-				"add_memory":    m.createMemoryTool,
-				"update_memory": m.updateMemoryToolWrapper,
-				"delete_memory": m.deleteMemoryTool,
+		for _, toolCall := range toolCalls {
+			functionName := toolCall.FunctionCall.Name
+			functionToCall, ok := availableFunctions[functionName]
+			if !ok {
+				log.Printf("Warning: Function %s not found in available functions", functionName)
+				continue
 			}
 
-			for _, toolCallRaw := range toolCalls {
-				toolCall, ok := toolCallRaw.(map[string]interface{})
-				if !ok {
-					log.Printf("Warning: Unexpected tool_call format: %+v", toolCallRaw)
-					continue
-				}
+			argumentsRaw := toolCall.FunctionCall.Arguments
 
-				functionName, ok := toolCall["name"].(string)
-				if !ok {
-					log.Printf("Warning: Function name not found or not a string in tool_call: %+v", toolCall)
-					continue
-				}
-
-				functionToCall, ok := availableFunctions[functionName]
-				if !ok {
-					log.Printf("Warning: Function %s not found in available functions", functionName)
-					continue
-				}
-
-				argumentsRaw, ok := toolCall["arguments"].(string)
-				if !ok {
-					log.Printf("Warning: Arguments not found or not a string in tool_call: %+v", toolCall)
-					continue
-				}
-
-				var functionArgs map[string]interface{}
-				err = json.Unmarshal([]byte(argumentsRaw), &functionArgs)
-				if err != nil {
-					log.Printf("Error unmarshaling function arguments: %v", err)
-					continue
-				}
-
-				log.Printf("[openai_func] func: %s, args: %+v", functionName, functionArgs)
-
-				if functionName == "add_memory" || functionName == "update_memory" {
-					functionArgs["metadata"] = metadata
-				}
-
-				// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
-				functionResultID, err := functionToCall(functionArgs)
-				if err != nil {
-					log.Printf("Error calling function %s: %v", functionName, err)
-					continue
-				}
-
-				functionResults = append(functionResults, map[string]interface{}{
-					"id":    functionResultID,
-					"event": trimMemorySuffix(functionName),
-					"data":  functionArgs["data"],
-				})
-				// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
+			var functionArgs map[string]interface{}
+			err = json.Unmarshal([]byte(argumentsRaw), &functionArgs)
+			if err != nil {
+				log.Printf("Error unmarshaling function arguments: %v", err)
+				continue
 			}
+
+			fmt.Println(fmt.Printf("[openai_func] func: %s, args: %+v", functionName, functionArgs))
+
+			if functionName == "add_memory" || functionName == "update_memory" {
+				functionArgs["metadata"] = metadata
+			}
+
+			// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
+			functionResultID, err := functionToCall(functionArgs)
+			if err != nil {
+				fmt.Printf("ERROR calling function %s: %v", functionName, err)
+				continue
+			}
+
+			functionResults = append(functionResults, map[string]interface{}{
+				"id":    functionResultID,
+				"event": utils.TrimMemorySuffix(functionName),
+				"data":  functionArgs["data"],
+			})
+
+			fmt.Println(fmt.Printf("Function results: %+v", functionResults))
+			// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 		}
-		// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
-	*/
+	}
+	// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
 	// m.telemetry.CaptureEvent("memGo.add", nil)
 	return map[string]interface{}{"message": "ok", "details": "functionResults"}, nil
 }
@@ -788,7 +768,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 }
 
 func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) {
-	log.Printf("Updating memory with memoryID=%s with data=%s", memoryID, data)
+	fmt.Println(fmt.Printf("Updating memory with memoryID=%s with data=%s", memoryID, data))
 
 	existingMemory, err := m.vectorStore.Get(memoryID)
 	if err != nil {
@@ -945,13 +925,13 @@ func main() {
 	agentId := "whatsapp"
 	// runId := "entrevista-1"
 
-	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
+	text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
 	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
 	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
 	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
 	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
 	// text := "Hola, buen dia"
-	text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
+	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
 	res, err := m.Add(
 		text,     // data
 		&userId,  // user_id
@@ -965,7 +945,7 @@ func main() {
 		log.Fatalf("Error adding memory: %v", err)
 	}
 
-	fmt.Printf("Memory add response: %+v\n", res)
+	fmt.Println(fmt.Printf("Memory add response: %+v\n", res))
 
 	// search, err := m.Search("hello", &userId, nil, nil, 5, nil)
 	// if err != nil {

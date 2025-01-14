@@ -40,7 +40,8 @@ func GetUpdateMemoryPrompt(existingMemories []map[string]interface{}, memory str
 
 // getUpdateMemoryMessages generates the messages for the LLM
 func GetUpdateMemoryMessages(existingMemories []map[string]interface{}, memory string) llms.MessageContent {
-	prompt := GetUpdateMemoryPrompt(existingMemories, memory, prompts.GET_UPDATE_MEMORY_PROMPT_FUNCTION_CALLING)
+	// prompt := GetUpdateMemoryPrompt(existingMemories, memory, prompts.GET_UPDATE_MEMORY_PROMPT_FUNCTION_CALLING)
+	prompt := GetUpdateMemoryPrompt(existingMemories, memory, prompts.UPDATE_MEMORY_PROMPT)
 	return llms.TextParts(llms.ChatMessageTypeHuman, prompt)
 }
 

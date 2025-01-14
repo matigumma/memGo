@@ -18,8 +18,8 @@ There are specific guidelines to select which operation to perform:
         - Old Memory:
             [
                 {{
-                    "id" : "0",
-                    "text" : "User is a software engineer"
+                    "ID" : "0",
+                    "Memory" : "User is a software engineer"
                 }}
             ]
         - Retrieved facts: ["Name is John"]
@@ -44,6 +44,7 @@ There are specific guidelines to select which operation to perform:
     If the retrieved fact contains information that conveys the same thing as the elements present in the memory, then you have to keep the fact which has the most information. 
     Example (a) -- if the memory contains "User likes to play cricket" and the retrieved fact is "Loves to play cricket with friends", then update the memory with the retrieved facts.
     Example (b) -- if the memory contains "Likes cheese pizza" and the retrieved fact is "Loves cheese pizza", then you do not need to update it because they convey the same information.
+    Old Memory Score is important to decide which fact to update, because the score is based on the similarity between the retrieved facts and the memory.
     If the direction is to update the memory, then you have to update it.
     Please keep in mind while updating you have to keep the same ID.
     Please note to return the IDs in the output from the input IDs only and do not generate any new ID.
@@ -51,16 +52,19 @@ There are specific guidelines to select which operation to perform:
         - Old Memory:
             [
                 {{
-                    "id" : "0",
-                    "text" : "I really like cheese pizza"
+                    "ID" : "0",
+                    "Memory" : "I really like cheese pizza"
+                    score:0.91000012874603
                 }},
                 {{
-                    "id" : "1",
-                    "text" : "User is a software engineer"
+                    "ID" : "1",
+                    "Memory" : "User is a software engineer"
+                    score:1.000000238418579
                 }},
                 {{
-                    "id" : "2",
-                    "text" : "User likes to play cricket"
+                    "ID" : "2",
+                    "Memory" : "User likes to play cricket"
+                    score:0.89000238418579
                 }}
             ]
         - Retrieved facts: ["Loves chicken pizza", "Loves to play cricket with friends"]
@@ -94,12 +98,14 @@ There are specific guidelines to select which operation to perform:
         - Old Memory:
             [
                 {{
-                    "id" : "0",
-                    "text" : "Name is John"
+                    "ID" : "0",
+                    "Memory" : "Name is John"
+                    score:1.000000238418579
                 }},
                 {{
-                    "id" : "1",
-                    "text" : "Loves cheese pizza"
+                    "ID" : "1",
+                    "Memory" : "Loves cheese pizza"
+                    score:0.89000238418579
                 }}
             ]
         - Retrieved facts: ["Dislikes cheese pizza"]
@@ -124,12 +130,14 @@ There are specific guidelines to select which operation to perform:
         - Old Memory:
             [
                 {{
-                    "id" : "0",
-                    "text" : "Name is John"
+                    "ID" : "0",
+                    "Memory" : "Name is John"
+                    score:1.000000238418579
                 }},
                 {{
-                    "id" : "1",
-                    "text" : "Loves cheese pizza"
+                    "ID" : "1",
+                    "Memory" : "Loves cheese pizza"
+                    score:9.999999046325684
                 }}
             ]
         - Retrieved facts: ["Name is John"]
@@ -153,9 +161,11 @@ Below is the current content of my memory which I have collected till now. You h
 
 %s
 
-You have to analyze this next new retrieved facts and determine whether these facts should be added, updated, or deleted in the memory.
+The new retrieved facts are mentioned in the triple doubleticks. You have to analyze the new retrieved facts and determine whether these facts should be added, updated, or deleted in the memory.
 
+"""
 %s
+"""
 
 Follow the instruction mentioned below:
 - Do not return anything from the custom few shot prompts provided above.
@@ -177,13 +187,13 @@ Guidelines:
     - If the new memory provides a more recent or accurate update, replace the old memory with new one.
     - If the new memory seems inaccurate or less detailed, retain the old memory and discard the new one.
 - Maintain a consistent and clear style throughout all memories, ensuring each entry is concise yet informative.
-- If the new memory is a variation or extension of an existing memory, update the existing memory to reflect the new information.
+- If the new Memories are a variation or extension of an existing memory, update the existing memory to reflect the new information only if it is more recent or accurate.
 
 Here are the details of the task:
 - Existing Memories:
 %v
 
-- New Memory: %v
+- New Memories: %v
 `
 
 const MEMORY_DEDUCTION_PROMPT = `

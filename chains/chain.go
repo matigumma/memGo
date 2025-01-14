@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/matigumma/memGo/models"
-	"github.com/matigumma/memGo/tools"
-	"github.com/matigumma/memGo/utils"
 	"github.com/tmc/langchaingo/chains"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -48,7 +46,7 @@ func (c *Chain) parseLlmsMessagesContent(messages []llms.MessageContent) string 
 
 func (c *Chain) debugPrint(message string) {
 	if c.debug {
-		fmt.Println("Debug:", message)
+		fmt.Println("DEBUG:::", message)
 		fmt.Println("") // print a separated line
 	}
 }
@@ -907,8 +905,9 @@ func (c *Chain) MEMORY_DEDUCTION2(messages []llms.MessageContent) (map[string]in
 	return result, nil
 }
 
-func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFacts []interface{}) (map[string]interface{}, error) {
+func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFacts []interface{}) (*llms.ContentChoice, error) {
 	fmt.Println("Chain.MEMORY_UPDATER")
+	fmt.Println("")
 
 	/* prepare */
 	//
@@ -916,26 +915,30 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 	for i, item := range existingMemories {
 		if item.Score != nil {
 			serializedItem := map[string]interface{}{
-				"id":     item.ID,
-				"memory": item.Memory,
-				"score":  *item.Score,
+				"real_id": item.ID,
+				"id":      i,
+				"memory":  item.Memory,
+				"score":   *item.Score,
 			}
 			serializedExistingMemories[i] = serializedItem
+			c.debugPrint("Serialized existing memory: " + fmt.Sprintf("%+v", serializedItem))
 		}
 	}
 
 	var relevantFactsText string
-	for _, fact := range relevantFacts {
+	for i, fact := range relevantFacts {
 		if factStr, ok := fact.(string); ok {
-			relevantFactsText += factStr + " "
+			relevantFactsText += fmt.Sprintf("%d - %s\n ", i+1, factStr)
 		} else {
 			log.Printf("Skipping non-string fact: %v", fact)
 		}
 	}
-	relevantFactsText = strings.TrimSpace(relevantFactsText) // Trim any trailing space
+	// relevantFactsText = strings.TrimSpace(relevantFactsText) // Trim any trailing space
+
+	c.debugPrint("Relevant facts: " + relevantFactsText)
 	/* prepare */
 
-	tools := []models.Tool{tools.ADD_MEMORY_TOOL, tools.UPDATE_MEMORY_TOOL, tools.DELETE_MEMORY_TOOL}
+	// tools := []models.Tool{tools.ADD_MEMORY_TOOL, tools.UPDATE_MEMORY_TOOL, tools.DELETE_MEMORY_TOOL}
 
 	// model := "gpt-3.5-turbo" //
 	model := "gpt-4o-mini" //
@@ -944,28 +947,168 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 	llm, err := openai.New(openai.WithModel(model))
 	if err != nil {
 		log.Panic(err)
+		return nil, err
 	}
 
 	ctx := context.Background()
 
-	fullPrompt := utils.GetUpdateMemoryMessages(serializedExistingMemories, relevantFactsText)
+	// fullPrompt := utils.GetUpdateMemoryMessages(serializedExistingMemories, relevantFactsText)
 
-	messageHistory := []llms.MessageContent{fullPrompt}
+	// c.debugPrint("Full prompt: " + fmt.Sprintf("%+v", fullPrompt))
 
-	resp, err := llm.GenerateContent(ctx, messageHistory, llms.WithTools(tools))
+	// messageHistory := []llms.MessageContent{fullPrompt}
+
+	// resp, err := llm.GenerateContent(ctx, messageHistory, llms.WithTools(tools))
+	// if err != nil {
+	// 	log.Panic(err)
+	// }
+
+	Relevancia := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are tasked with determining the relevance of newly retrieved facts to the existing memory. Compare the new facts with each memory entry and assign one of the following statuses:
+- MATCH: The fact is identical or highly similar to the memory.
+- EXTEND: The fact provides additional information about an existing memory.
+- CONFLICT: The fact directly contradicts an existing memory.
+- NEW: The fact is unrelated to existing memories.
+
+Existing Memory:
+{{.existing_memories}}
+
+New Retrieved Facts:
+{{.relevantFactsText}}
+
+Return a JSON object where each fact is mapped to one of the above statuses, with a brief explanation of the reasoning for the status assignment.
+`, []string{
+		"existing_memories",
+		"relevantFactsText",
+	},
+	))
+
+	RelevanciaResponse, err := chains.Call(ctx, Relevancia, map[string]interface{}{
+		"existing_memories": serializedExistingMemories,
+		"relevantFactsText": relevantFactsText,
+	})
+
 	if err != nil {
 		log.Panic(err)
 	}
 
+	c.debugPrint("RelevanciaResponse: " + fmt.Sprintf("%+v", RelevanciaResponse))
+
+	Conflictos := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are analyzing conflicting facts between the existing memory and newly retrieved facts. Your task is to resolve these conflicts based on the following criteria:
+1. If the new fact is more detailed or recent, replace the old memory.
+2. If the old memory is more accurate or detailed, retain it and discard the new fact.
+
+Conflicting Pairs:
+{{.conflicts}}
+
+Return a JSON object indicating which memory to retain and which to discard. Include reasoning for each decision.
+`, []string{
+		"conflicts",
+	},
+	))
+
+	ConflictosResponse, err := chains.Call(ctx, Conflictos, map[string]interface{}{
+		"conflicts": RelevanciaResponse,
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	c.debugPrint("ConflictosResponse: " + fmt.Sprintf("%+v", ConflictosResponse))
+
+	Actualizar := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are tasked with identifying updates to the memory based on the retrieved facts marked as EXTEND. Your goal is to:
+1. Merge the new fact into the corresponding memory entry, preserving its original ID.
+2. Ensure the updated memory is concise and informative.
+
+Memory Entries to Update:
+{{.existing_memories}}
+
+New Retrieved Facts to Extend:
+{{.conflicts}}
+
+Return a JSON object where each updated memory includes its ID, the updated text, and the reasoning behind the update.
+`, []string{
+		"existing_memories",
+		"conflicts",
+	},
+	))
+
+	ActualizarResponse, err := chains.Call(ctx, Actualizar, map[string]interface{}{
+		"existing_memories": serializedExistingMemories,
+		"conflicts":         ConflictosResponse,
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	c.debugPrint("ActualizarResponse: " + fmt.Sprintf("%+v", ActualizarResponse))
+
+	Identificar := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are tasked with identifying new facts that need to be added to the memory. Each new fact should receive a unique ID.
+
+Existing Memory:
+{{.existing_memories}}
+
+New Retrieved Facts to Add:
+{{.conflicts}}
+
+Return a JSON object with the new facts added, including their assigned IDs.
+
+`, []string{
+		"existing_memories",
+		"conflicts",
+	},
+	))
+
+	IdentificarResponse, err := chains.Call(ctx, Identificar, map[string]interface{}{
+		"existing_memories": serializedExistingMemories,
+		"conflicts":         ActualizarResponse,
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	c.debugPrint("IdentificarResponse: " + fmt.Sprintf("%+v", IdentificarResponse))
+
+	aEliminar := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are tasked with identifying memory entries that should be deleted due to conflicts with newly retrieved facts.
+
+Existing Memory:
+{{.existing_memories}}
+
+New Retrieved Facts Indicating Deletions:
+{{.conflicts}}
+
+Return a JSON object listing the IDs of memory entries to be deleted, along with an explanation for each deletion.
+
+`, []string{
+		"existing_memories",
+		"conflicts",
+	},
+	))
+
+	aEliminarResponse, err := chains.Call(ctx, aEliminar, map[string]interface{}{
+		"existing_memories": serializedExistingMemories,
+		"conflicts":         IdentificarResponse,
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	c.debugPrint("aEliminarResponse: " + fmt.Sprintf("%+v", aEliminarResponse))
+
+	return nil, fmt.Errorf("new error")
+
 	// c.debugPrint("Using model: " + model)
 
-	messageHistory = updateMessageHistory(messageHistory, resp)
+	// messageHistory = updateMessageHistory(messageHistory, resp)
 
-	c.debugPrint("Output from LLM: " + fmt.Sprintf("%+v", messageHistory[1]))
+	// c.debugPrint("Output from LLM: " + fmt.Sprintf("%+v", messageHistory[1]))
 	// Execute tool calls requested by the model
-	messageHistory = c.executeToolCalls(ctx, llm, messageHistory, resp)
+	// messageHistory = c.executeToolCalls(ctx, llm, messageHistory, resp)
 
-	return map[string]interface{}{}, nil
+	// return resp.Choices[0], nil
 }
 
 // updateMessageHistory updates the message history with the assistant's
