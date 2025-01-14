@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/matigumma/memGo/models"
@@ -925,6 +926,7 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 		}
 	}
 
+	var newFacts []string
 	var relevantFactsText string
 	for i, fact := range relevantFacts {
 		if factStr, ok := fact.(string); ok {
@@ -982,6 +984,22 @@ Return a JSON object where each fact is mapped to one of the above statuses, wit
 	},
 	))
 
+	/* output example:
+	{
+		"1": {
+			"status": "MATCH",
+			"reason": "The fact is identical to the existing memory entry with id:20, which states that a contact was received from a potential client interested in implementing a chatbot."
+		},
+		"2": {
+			"status": "EXTEND",
+			"reason": "This fact provides additional information about the specific functionality of the chatbot, which is to analyze WhatsApp conversations, extending the existing memory about the client's needs."
+		},
+		"3": {
+			"status": "NEW",
+			"reason": "This fact introduces new information regarding the client's economic situation and the developer's considerations, which is not covered in the existing memories."
+		},
+	}
+	*/
 	RelevanciaResponse, err := chains.Call(ctx, Relevancia, map[string]interface{}{
 		"existing_memories": serializedExistingMemories,
 		"relevantFactsText": relevantFactsText,
@@ -991,11 +1009,119 @@ Return a JSON object where each fact is mapped to one of the above statuses, wit
 		log.Panic(err)
 	}
 
-	c.debugPrint("RelevanciaResponse: " + fmt.Sprintf("%+v", RelevanciaResponse))
+	// Iterate through the RelevanciaResponse to filter facts
+	newrelevantFactsText := ""
+	newFacts = make([]string, 0)
+	textResponse, ok := RelevanciaResponse["text"].(string)
+	if !ok {
+		log.Panic("RelevanciaResponse['text'] is not a map")
+	}
+
+	textResponse = strings.Trim(textResponse, "```json")
+	textResponse = strings.Trim(textResponse, "```")
+
+	var textResponseResult map[string]interface{}
+	err = json.Unmarshal([]byte(textResponse), &textResponseResult)
+	if err != nil {
+		log.Panic("Error parsing JSON: ", err)
+	}
+
+	c.debugPrint("RelevanciaResponse: " + fmt.Sprintf("%+v", textResponseResult))
+
+	idsToDeleteFromResponseResult := make([]string, 0)
+	for key, value := range textResponseResult {
+
+		statusInfo, ok := value.(map[string]interface{})
+		if !ok {
+			log.Printf("Skipping non-map value for key %s: %v", key, value)
+			continue
+		}
+		status, ok := statusInfo["status"].(string)
+		if !ok {
+			log.Printf("Skipping entry for key %s: status is not a string", key)
+			continue
+		}
+
+		if status == "MATCH" {
+			// los que tienen MATCH son memorias que no necesito actualizar
+
+			for i, fact := range relevantFacts {
+				if strconv.Itoa(i+1) == key {
+					c.debugPrint("MATCH: " + fmt.Sprintf("%+v", fact))
+					if factStr, ok := fact.(string); ok {
+						newrelevantFactsText += fmt.Sprintf("%s - %s\n ", key, factStr)
+						idsToDeleteFromResponseResult = append(idsToDeleteFromResponseResult, key)
+					} else {
+						// showld i panic?
+						log.Printf("Skipping non-string fact: %v", fact)
+					}
+				}
+			}
+
+		} else if status == "NEW" {
+			// los que tienen NEW son memorias nuevas que necesito actualizar
+
+			for i, fact := range relevantFacts {
+				if strconv.Itoa(i+1) == key {
+					c.debugPrint("NEW: " + fmt.Sprintf("%+v", fact))
+					if factStr, ok := fact.(string); ok {
+						newFacts = append(newFacts, factStr) // FACTS to add into memory
+						idsToDeleteFromResponseResult = append(idsToDeleteFromResponseResult, key)
+					} else {
+						// showld i panic?
+						log.Printf("Skipping non-string fact: %v", fact)
+					}
+				}
+			}
+		} else if status == "CONFLICT" {
+			for i, fact := range relevantFacts {
+				if strconv.Itoa(i+1) == key {
+					c.debugPrint("CONFLICT: " + fmt.Sprintf("%+v", fact))
+					if factStr, ok := fact.(string); ok {
+						textResponseResult[key] = map[string]interface{}{
+							"status": "CONFLICT",
+							"fact":   factStr,
+						}
+					} else {
+						// showld i panic?
+						log.Printf("Skipping non-string fact: %v", fact)
+					}
+				}
+			}
+		} else if status == "EXTEND" {
+			for i, fact := range relevantFacts {
+				if strconv.Itoa(i+1) == key {
+					c.debugPrint("EXTEND: " + fmt.Sprintf("%+v", fact))
+					if factStr, ok := fact.(string); ok {
+						textResponseResult[key] = map[string]interface{}{
+							"status": "EXTEND",
+							"reason": factStr,
+						}
+					} else {
+						// showld i panic?
+						log.Printf("Skipping non-string fact: %v", fact)
+					}
+				}
+			}
+		}
+	}
+
+	for _, id := range idsToDeleteFromResponseResult {
+		delete(textResponseResult, id)
+	}
+
+	c.debugPrint("NEW FACTS: " + strings.Join(newFacts, "\n"))
+	c.debugPrint("NEW RELEVANT FACTS: " + newrelevantFactsText)
+	relevantFactsText = newrelevantFactsText // lo piso...
+
+	c.debugPrint("FINAL RelevanciaResponse: " + fmt.Sprintf("%+v", textResponseResult))
 
 	Conflictos := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are analyzing conflicting facts between the existing memory and newly retrieved facts. Your task is to resolve these conflicts based on the following criteria:
 1. If the new fact is more detailed or recent, replace the old memory.
 2. If the old memory is more accurate or detailed, retain it and discard the new fact.
+
+Old Memory:
+{{.existing_memories}}
 
 Conflicting Pairs:
 {{.conflicts}}
@@ -1007,14 +1133,17 @@ Return a JSON object indicating which memory to retain and which to discard. Inc
 	))
 
 	ConflictosResponse, err := chains.Call(ctx, Conflictos, map[string]interface{}{
-		"conflicts": RelevanciaResponse,
+		"conflicts":         fmt.Sprintf("%+v", relevantFactsText),
+		"existing_memories": serializedExistingMemories,
 	})
 
 	if err != nil {
 		log.Panic(err)
 	}
 
-	c.debugPrint("ConflictosResponse: " + fmt.Sprintf("%+v", ConflictosResponse))
+	c.debugPrint("CONFLICTOSRESPONSE::: " + fmt.Sprintf("%+v", ConflictosResponse))
+
+	// return nil, fmt.Errorf("asd")
 
 	Actualizar := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are tasked with identifying updates to the memory based on the retrieved facts marked as EXTEND. Your goal is to:
 1. Merge the new fact into the corresponding memory entry, preserving its original ID.
