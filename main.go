@@ -169,31 +169,29 @@ func (m *Memory) Add(
 		metadata["run_id"] = *runID
 	}
 
-	// 1. check if at least one of userID, agentID, or runID is present
+	// 1. check if at least ONE of userID, agentID, or runID is present
 	if userID == nil && agentID == nil && runID == nil {
 		return nil, errors.New("error: missing parameters, at least one of userID, agentID, or runID is required")
 	}
 
 	// en este paso prepara la ejecucion asincrona de la deduccion de la memoria en el vectorstore
 
-	/* =============chain.MEMORY_DEDUCTION process============== */
-	// Este paso obtiene informacion generalizada relevante de la data y devuelve in JSON bien estructurado.
-	/* reduction test */
+	fmt.Println("Raw INPUT Data: \n" + data)
 
-	fmt.Println("Raw Data: " + data)
+	/* =============chain.MEMORY_DEDUCTION process============== */
+	// Este paso obtiene informacion generalizada relevante de la data de la memoria guardada en el VectorStore
+	/* deduction chain */
 
 	deductionAgent := chains.NewChain(true)
-	Messages := []llms.MessageContent{}
-	Messages = append(Messages, llms.TextParts(llms.ChatMessageTypeHuman, data))
 
-	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
-	// _, err := reductionAgent.MEMORY_REDUCTION(Messages)
-	deductios, err := deductionAgent.MEMORY_DEDUCTION(Messages)
+	// 2. generates a prompt using the input data and
+	// sends it to a Large Language Model (LLM) to retrieve new relevant facts
+	deduction, err := deductionAgent.MEMORY_DEDUCTION(data)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
 
-	cantFacts := len(deductios["relevant_facts"].([]interface{}))
+	cantFacts := len(deduction["relevant_facts"].([]interface{}))
 	// Check if there are any relevant facts to store
 	if cantFacts == 0 {
 		return map[string]interface{}{
@@ -209,55 +207,12 @@ func (m *Memory) Add(
 	// -----------------
 	// DATA string
 	// MESSAGES []llms.MessageContent (de la data como ChatMessageTypeHuman)
-	// DEDUCTIOS map[string]interface{} (relevants_facts, metadata)
+	// DEDUCTIOn map[string]interface{} (relevants_facts, metadata)
 
-	// DEDUCTIOS SCHEMA:
+	// DEDUCTIOn SCHEMA:
 	/*
-		{
-			"relevant_facts": {
-				"type": "array",
-				"items": {
-					"type": "string"
-				}
-			},
-			"metadata": {
-				"type": "object",
-				"properties": {
-					"scope": {
-						"type": "string"
-					},
-					"associations": {
-						"type": "object",
-						"properties": {
-							"related_entities": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								}
-							},
-							"related_events": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								}
-							},
-							"tags": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								}
-							}
-						}
-					},
-					"sentiment": {
-						"type": "string",
-						"description": "The overall sentiment of the text, e.g., positive, negative, neutral"
-					}
-				}
-			}
-			}
-		}
-	*/
+
+	 */
 
 	/* ============= */
 
@@ -266,7 +221,7 @@ func (m *Memory) Add(
 
 	/* Search for related memories  */
 
-	relevantFacts, ok := deductios["relevant_facts"].([]interface{})
+	relevantFacts, ok := deduction["relevant_facts"].([]interface{})
 	if !ok {
 		return nil, errors.New("error: relevant_facts is not a list")
 	}
@@ -274,11 +229,11 @@ func (m *Memory) Add(
 	// el tamaño maximo es de la cantidad de relevant_facts * searchs limit de 5
 	acumuladorMemoriasParaEvaluar := make([]models.MemoryItem, (len(relevantFacts) * 5))
 
-	// metadata = deductios["metadata"]
+	// metadata = deduction["metadata"]
 	filterss := make(map[string]interface{})
 
 	// Check if metadataMap is a valid map
-	if metadataMap, ok := deductios["metadata"].(map[string]interface{}); ok {
+	if metadataMap, ok := deduction["metadata"].(map[string]interface{}); ok {
 		// Directly assign simple types
 		if scope, ok := metadataMap["scope"].(string); ok {
 			metadata["scope"] = scope

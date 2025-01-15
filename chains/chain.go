@@ -7,8 +7,10 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/matigumma/memGo/models"
+	p "github.com/matigumma/memGo/prompts"
 	"github.com/tmc/langchaingo/chains"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -223,107 +225,111 @@ ENTRADA:
 	return result, nil
 }
 
-func (c *Chain) MEMORY_DEDUCTION(messages []llms.MessageContent) (map[string]interface{}, error) {
+func (c *Chain) MEMORY_DEDUCTION(data string) (map[string]interface{}, error) {
 	fmt.Println("Chain.MEMORY_DEDUCTION")
+	st := time.Now()
 
-	MEMORY_DEDUCTION_PROMPT_SPA := `Deduce los hechos relevantes en términos de sus intenciones, preferencias significativas y recuerdos importantes del texto proporcionado.
-Asegúrate de que los hechos extraídos estén formulados desde la perspectiva de la persona que hace el comentario.
-Solo devuelve los hechos relevantes, preferencias significativas y recuerdos importantes en viñetas:
-Texto en lenguaje natural: {{.conversation}}
-
-Restricciones para deducir hechos relevantes, preferencias significativas y recuerdos importantes:
-- Evalua detenidamente el texto para identificar si hay contenido suficiente como para deducir hechos relevantes, preferencias significativas y recuerdos importantes. 
-- De no ser suficiente, no deducir y devolver el el objeto con las propiedades vacias.
-- Si no se ha deducido nada, No completes metadata.
-- Los hechos relevantes, preferencias significativas y recuerdos importantes deben ser concisos e informativos.
-- La extrae la metadata (scope, sentiment related_entities, related_events, tags) que creas conveniente para acompañar los hechos relevantes, preferencias significativas y recuerdos importantes. 
-- Respuesta en formato JSON con una clave como "relevant_facts" y otra para "metadata". Los valores correspondientes serán listas de cadenas.
-- Responde en el mismo idioma del texto.
-
-ejemplo:
-{
-	"relevant_facts": [
-		"Está preparando un documento de prompts",
-		"El documento es para tres equipos: copy, diseño y contenido",
-		"Busca recursos bibliográficos para ampliar el material"
-	],
-	"metadata": {
-		"scope": "universitario",
-		"sentiment": "neutral",
-		"related_entities": ["documentos", "equipos"],
-		"related_events": ["creación de documentos", "investigación de recursos"],
-		"tags": ["trabajo", "documentos", "prompts", "equipos"]
-	}
-}
-
-¿Hechos relevantes, preferencias significativas y recuerdos importantes deducidos:?`
-
+	/* ====== SETTINGS ====== */
 	// model := "gpt-3.5-turbo" // este funciona ahi nomas,,, se queda medio corto
 	model := "gpt-4o-mini" // funciona bien con el ultimo prompt
 	// model := "gpt-4o"
 
+	/* ====== LLM INSTANCE ====== */
 	llm, err := openai.New(openai.WithModel(model))
 	if err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("error creating LLM: %w", err)
 	}
+
+	/* ====== PROMPT ====== */
 	prompt := prompts.NewPromptTemplate(
-		MEMORY_DEDUCTION_PROMPT_SPA,
+		p.MEMORY_DEDUCTION_PROMPT_SPA,
 		[]string{"conversation"},
-		// []string{"text", "details"},
 	)
-	llmChain := chains.NewLLMChain(llm, prompt)
 
-	// conversation_mock := []llms.MessageContent{}
+	/* ====== DATA FORMAT ====== */
+	messages := []llms.MessageContent{}
+	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, data))
 
-	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeHuman, "Jugando a la pelota con los chicos ayer me lesione la pierna izquieda y no voy a poder jugar por 6 meses"))
-	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeAI, "Lamento escuchar eso. Espero que te recuperes pronto. Contame cómo sucedió. ¿Hay algo en lo que pueda ayudarte mientras te recuperas?"))
-	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeHuman, "corriendo por la banda izquierda, trabe fuerte con Marcos y quede tirado en el piso, a él no le paso nada, tneia canilleras."))
-	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeAI, "Fuiste al medico?"))
-	// conversation_mock = append(conversation_mock, llms.TextParts(llms.ChatMessageTypeHuman, "No, solo me puse hielo para que no se inflame."))
-
-	// If a chain only needs one input we can use Run to execute it.
-	// We can pass callbacks to Run as an option, e.g:
-	//   chains.WithCallback(callbacks.StreamLogHandler{})
+	/* ====== CHAIN ====== */
 	ctx := context.Background()
-
+	llmChain := chains.NewLLMChain(llm, prompt)
 	out, err := chains.Call(ctx, llmChain, map[string]any{
 		"conversation": messages,
 	})
-	// out, err := chains.Call(ctx, llmChain, map[string]any{
-	// 	"text":    "Jugando a la pelota con los chicos ayer me lesione la pierna izquieda y no voy a poder jugar por 6 meses",
-	// 	"details": `{"user": "Ricky", "agent": "ChatGPT", "today": "2023-10-26"}`,
-	// })
 	if err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("error calling LLM: %w", err)
 	}
 
+	/* ====== DEBUG ====== */
 	c.debugPrint("Using model: " + model)
 	c.debugPrint("Output from LLM: " + fmt.Sprintf("%v", out["text"]))
 
+	/* ====== OUTPUT FORMAT ====== */
 	parsedOutput, ok := out["text"].(string)
 	if !ok {
-		log.Panic("Failed to parse output text")
+		return nil, fmt.Errorf("failed to parse MEMORY_DEDUCTION output text")
 	}
 
+	// remove possible trailing ```json and ``` from llm output text
 	parsedOutput = strings.Trim(parsedOutput, "```json")
 	parsedOutput = strings.Trim(parsedOutput, "`")
 
 	var result map[string]interface{}
+	// stores the parsedOutput in the result value pointer
 	err = json.Unmarshal([]byte(parsedOutput), &result)
 	if err != nil {
-		log.Panic("Error parsing JSON: ", err)
+		return nil, fmt.Errorf("error parsing JSON: %w", err)
 	}
 
-	// c.debugPrint("Output from LLM: " + fmt.Sprintln("Parsed facts:"))
-	// for _, fact := range result["facts"] {
-	// 	c.debugPrint("- " + fact)
-	// }
+	/* ====== OUTPUT SCHEMA ====== */
+	/*
+		{
+			"relevant_facts": {
+				"type": "array",
+				"items": {
+					"type": "string"
+				}
+			},
+			"metadata": {
+				"type": "object",
+				"properties": {
+					"scope": {
+						"type": "string"
+					},
+					"sentiment": {
+						"type": "string",
+						"description": "The overall sentiment of the text, e.g., positive, negative, neutral"
+					}
+					"related_entities": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"related_events": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"tags": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				}
+			}
+		}
+	*/
 
+	elapsed := time.Since(st)
+	c.debugPrint("Chain.MEMORY_DEDUCTION took: " + elapsed.String())
 	return result, nil
 }
 
 func (c *Chain) MEMORY_DEDUCTION2(messages []llms.MessageContent) (map[string]interface{}, error) {
-	fmt.Println("Chain.MEMORY_DEDUCTION")
+	fmt.Println("Chain.MEMORY_DEDUCTION2")
 
 	MEMORY_DEDUCTION_PROMPT_SPA := `Deduce los hechos relevantes, preferencias significativas y recuerdos importantes del texto proporcionado.
 				Solo devuelve los hechos relevantes, preferencias significativas y recuerdos importantes en viñetas:

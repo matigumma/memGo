@@ -312,3 +312,36 @@ ejemplo:
 }
 
 ¿Hechos relevantes, preferencias significativas y recuerdos importantes deducidos:?`
+
+// min prompt tokens size: 461 tokens + messages
+const MEMORY_DEDUCTION_PROMPT_SPA = `Deduce los hechos relevantes en términos de sus intenciones, preferencias significativas y recuerdos importantes del texto proporcionado.
+Asegúrate de que los hechos extraídos estén formulados desde la perspectiva de la persona que hace el comentario.
+Solo devuelve los hechos relevantes, preferencias significativas y recuerdos importantes en viñetas:
+Texto en lenguaje natural: {{.conversation}}
+
+Restricciones para deducir hechos relevantes, preferencias significativas y recuerdos importantes:
+- Evalua detenidamente el texto para identificar si hay contenido suficiente como para deducir hechos relevantes, preferencias significativas y recuerdos importantes. 
+- De no ser suficiente, no deducir y devolver el el objeto con las propiedades vacias.
+- Si no se ha deducido nada, No completes metadata.
+- Los hechos relevantes, preferencias significativas y recuerdos importantes deben ser concisos e informativos.
+- La extrae la metadata (scope, sentiment related_entities, related_events, tags) que creas conveniente para acompañar los hechos relevantes, preferencias significativas y recuerdos importantes. 
+- Respuesta en formato JSON con una clave como "relevant_facts" y otra para "metadata". Los valores correspondientes serán listas de cadenas.
+- Responde en el mismo idioma del texto.
+
+ejemplo:
+{
+	"relevant_facts": [
+		"Está preparando un documento de prompts",
+		"El documento es para tres equipos: copy, diseño y contenido",
+		"Busca recursos bibliográficos para ampliar el material"
+	],
+	"metadata": {
+		"scope": "universitario",
+		"sentiment": "neutral",
+		"related_entities": ["documentos", "equipos"],
+		"related_events": ["creación de documentos", "investigación de recursos"],
+		"tags": ["trabajo", "documentos", "prompts", "equipos"]
+	}
+}
+
+¿Hechos relevantes, preferencias significativas y recuerdos importantes deducidos:?`
