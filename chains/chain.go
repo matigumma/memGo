@@ -226,7 +226,7 @@ ENTRADA:
 }
 
 func (c *Chain) MEMORY_DEDUCTION(data string) (map[string]interface{}, error) {
-	fmt.Println("Chain.MEMORY_DEDUCTION")
+	c.debugPrint("Chain.MEMORY_DEDUCTION")
 	st := time.Now()
 
 	/* ====== SETTINGS ====== */
@@ -267,7 +267,7 @@ func (c *Chain) MEMORY_DEDUCTION(data string) (map[string]interface{}, error) {
 	/* ====== OUTPUT FORMAT ====== */
 	parsedOutput, ok := out["text"].(string)
 	if !ok {
-		return nil, fmt.Errorf("failed to parse MEMORY_DEDUCTION output text")
+		return nil, fmt.Errorf("failed to parse output text")
 	}
 
 	// remove possible trailing ```json and ``` from llm output text
@@ -913,11 +913,25 @@ func (c *Chain) MEMORY_DEDUCTION2(messages []llms.MessageContent) (map[string]in
 }
 
 func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFacts []interface{}) (*llms.ContentChoice, error) {
-	fmt.Println("Chain.MEMORY_UPDATER")
-	fmt.Println("")
+	c.debugPrint("Chain.MEMORY_UPDATER")
+	st := time.Now()
 
-	/* prepare */
-	//
+	/* ====== SETTINGS ====== */
+	ctx := context.Background()
+
+	// model := "gpt-3.5-turbo" //
+	model := "gpt-4o-mini" //
+	// model := "gpt-4o"
+
+	/* ====== LLM INSTANCE ====== */
+	llm, err := openai.New(openai.WithModel(model))
+	if err != nil {
+		return nil, fmt.Errorf("error creating LLM: %w", err)
+	}
+
+	/* ====== PROMPT ====== */
+
+	/* ====== DATA FORMAT ====== */
 	serializedExistingMemories := make([]map[string]interface{}, len(existingMemories))
 	for i, item := range existingMemories {
 		if item.Score != nil {
@@ -928,7 +942,7 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 				"score":   *item.Score,
 			}
 			serializedExistingMemories[i] = serializedItem
-			c.debugPrint("Serialized existing memory: " + fmt.Sprintf("%+v", serializedItem))
+			c.debugPrint("SRZd memory: " + fmt.Sprintf("%+v", serializedItem))
 		}
 	}
 
@@ -937,39 +951,13 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 	for i, fact := range relevantFacts {
 		if factStr, ok := fact.(string); ok {
 			relevantFactsText += fmt.Sprintf("%d - %s\n ", i+1, factStr)
+			c.debugPrint("RLVNt fact: " + factStr)
 		} else {
-			log.Printf("Skipping non-string fact: %v", fact)
+			c.debugPrint(fmt.Sprintf("Skipping non-string fact: %v", fact))
 		}
 	}
-	// relevantFactsText = strings.TrimSpace(relevantFactsText) // Trim any trailing space
-
-	c.debugPrint("Relevant facts: " + relevantFactsText)
-	/* prepare */
 
 	// tools := []models.Tool{tools.ADD_MEMORY_TOOL, tools.UPDATE_MEMORY_TOOL, tools.DELETE_MEMORY_TOOL}
-
-	// model := "gpt-3.5-turbo" //
-	model := "gpt-4o-mini" //
-	// model := "gpt-4o"
-
-	llm, err := openai.New(openai.WithModel(model))
-	if err != nil {
-		log.Panic(err)
-		return nil, err
-	}
-
-	ctx := context.Background()
-
-	// fullPrompt := utils.GetUpdateMemoryMessages(serializedExistingMemories, relevantFactsText)
-
-	// c.debugPrint("Full prompt: " + fmt.Sprintf("%+v", fullPrompt))
-
-	// messageHistory := []llms.MessageContent{fullPrompt}
-
-	// resp, err := llm.GenerateContent(ctx, messageHistory, llms.WithTools(tools))
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
 
 	Relevancia := chains.NewLLMChain(llm, prompts.NewPromptTemplate(`You are tasked with determining the relevance of newly retrieved facts to the existing memory. Compare the new facts with each memory entry and assign one of the following statuses:
 - MATCH: The fact is identical or highly similar to the memory.
@@ -1116,8 +1104,8 @@ Return a JSON object where each fact is mapped to one of the above statuses, wit
 		delete(textResponseResult, id)
 	}
 
-	c.debugPrint("NEW FACTS: " + strings.Join(newFacts, "\n"))
-	c.debugPrint("NEW RELEVANT FACTS: " + newrelevantFactsText)
+	// c.debugPrint("NEW FACTS: " + strings.Join(newFacts, "\n"))
+	// c.debugPrint("NEW RELEVANT FACTS: " + newrelevantFactsText)
 	relevantFactsText = newrelevantFactsText // lo piso...
 
 	c.debugPrint("FINAL RelevanciaResponse: " + fmt.Sprintf("%+v", textResponseResult))
@@ -1232,6 +1220,9 @@ Return a JSON object listing the IDs of memory entries to be deleted, along with
 	}
 
 	c.debugPrint("aEliminarResponse: " + fmt.Sprintf("%+v", aEliminarResponse))
+
+	elapsed := time.Since(st)
+	c.debugPrint("Chain.MEMORY_UPDATER took: " + elapsed.String())
 
 	return nil, fmt.Errorf("new error")
 

@@ -9,6 +9,13 @@ import (
 	"github.com/tmc/langchaingo/llms"
 )
 
+func DebugPrint(message string, debug bool) {
+	if debug {
+		fmt.Println("DEBUG:::", message)
+		// fmt.Println("") // print a separated line
+	}
+}
+
 func MergeMaps(m1, m2 map[string]interface{}) map[string]interface{} {
 	merged := make(map[string]interface{})
 	for k, v := range m1 {

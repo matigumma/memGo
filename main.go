@@ -72,6 +72,7 @@ type Memory struct {
 	llm            LLM
 	db             *sqlitemanager.SQLiteManager
 	collectionName string
+	debug          bool
 }
 
 // NewMemory creates a new Memory instance
@@ -107,6 +108,7 @@ func NewMemory(config MemoryConfig) *Memory {
 		db:             db,          //SQLiteManager
 		telemetry:      nil,         //*phtelemetry,
 		collectionName: "",
+		debug:          true,
 		// collectionName: config.VectorStore.Config["CollectionName"],
 	}
 
@@ -145,6 +147,7 @@ func (m *Memory) Add(
 	prompt *string, // Prompt to use for memory deduction. Defaults nil.
 ) (map[string]interface{}, error) {
 	fmt.Println("Memory.Add")
+	/* ====== VALICACIONES ====== */
 	// creo mapa de metadatos si no se pasa por parametro
 	if metadata == nil {
 		metadata = make(map[string]interface{})
@@ -176,23 +179,32 @@ func (m *Memory) Add(
 
 	// en este paso prepara la ejecucion asincrona de la deduccion de la memoria en el vectorstore
 
-	fmt.Println("Raw INPUT Data: \n" + data)
+	utils.DebugPrint("Raw INPUT Data: \n"+data, m.debug)
 
-	/* =============chain.MEMORY_DEDUCTION process============== */
+	/* ============= chain.MEMORY_DEDUCTION process ============== */
+
 	// Este paso obtiene informacion generalizada relevante de la data de la memoria guardada en el VectorStore
-	/* deduction chain */
-
-	deductionAgent := chains.NewChain(true)
+	deductionChain := chains.NewChain(m.debug)
 
 	// 2. generates a prompt using the input data and
 	// sends it to a Large Language Model (LLM) to retrieve new relevant facts
-	deduction, err := deductionAgent.MEMORY_DEDUCTION(data)
+	deduction, err := deductionChain.MEMORY_DEDUCTION(data)
 	if err != nil {
-		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
+		return nil, fmt.Errorf("error generating response for MEMORY_DEDUCTION: %w", err)
 	}
 
-	cantFacts := len(deduction["relevant_facts"].([]interface{}))
-	// Check if there are any relevant facts to store
+	/* ====== VALIDATION DEDUCTION OUTPUT ====== */
+	relevantFacts, ok := deduction["relevant_facts"].([]interface{})
+	if !ok {
+		// print this error in case for inspection (maybe should log it in a file...)
+		fmt.Println(fmt.Errorf("error: relevant_facts is not a list after MEMORY_DEDUCTION\n %v", deduction))
+
+		return map[string]interface{}{
+			"message": "No memory added",
+			"details": "no relevant facts found",
+		}, nil
+	}
+	cantFacts := len(relevantFacts)
 	if cantFacts == 0 {
 		return map[string]interface{}{
 			"message": "No memory added",
@@ -200,31 +212,7 @@ func (m *Memory) Add(
 		}, nil
 	}
 
-	fmt.Println(fmt.Println("Relevant facts deducidos: " + strconv.Itoa(cantFacts)))
-	/* end reduction test */
-
-	// HASTA ACA TENEMOS:
-	// -----------------
-	// DATA string
-	// MESSAGES []llms.MessageContent (de la data como ChatMessageTypeHuman)
-	// DEDUCTIOn map[string]interface{} (relevants_facts, metadata)
-
-	// DEDUCTIOn SCHEMA:
-	/*
-
-	 */
-
-	/* ============= */
-
-	/* Deduction test */
-	/* end Deduction test */
-
-	/* Search for related memories  */
-
-	relevantFacts, ok := deduction["relevant_facts"].([]interface{})
-	if !ok {
-		return nil, errors.New("error: relevant_facts is not a list")
-	}
+	utils.DebugPrint("Relevant facts deducidos: "+strconv.Itoa(cantFacts), m.debug)
 
 	// el tamaño maximo es de la cantidad de relevant_facts * searchs limit de 5
 	acumuladorMemoriasParaEvaluar := make([]models.MemoryItem, (len(relevantFacts) * 5))
@@ -232,7 +220,7 @@ func (m *Memory) Add(
 	// metadata = deduction["metadata"]
 	filterss := make(map[string]interface{})
 
-	// Check if metadataMap is a valid map
+	// VALIDO METADATA Y AGREGO LA METADATA GENERADA DE LA DEDUCCION
 	if metadataMap, ok := deduction["metadata"].(map[string]interface{}); ok {
 		// Directly assign simple types
 		if scope, ok := metadataMap["scope"].(string); ok {
@@ -281,30 +269,31 @@ func (m *Memory) Add(
 		}
 	}
 
+	/* ====== SIMILARITY SEARCH FOR EVERY FACT OF DEDUCTIONS =====  */
 	for fact_index, fact := range relevantFacts {
 		factStr, ok := fact.(string)
 		if !ok {
-			log.Printf("Skipping non-string fact: %v", fact)
+			utils.DebugPrint(fmt.Sprintf("Error skipping non-string fact: %v\n at index: %d", fact, fact_index), m.debug)
 			continue
 		}
 
 		_, embeddings32, err := m.embeddingModel.Embed(factStr)
 		if err != nil {
-			log.Printf("Error embedding fact: %v", err)
+			utils.DebugPrint(fmt.Sprintf("Error embedding fact: %v\n at index: %d \nerr: %v", fact, fact_index, err), m.debug)
 			continue
 		}
 
+		/* ====== SEARCH FOR EXISTING MEMORIES IN VS ===== */
 		existingMemoriesRaw, err := m.vectorStore.Search(embeddings32, 5, filterss)
 		if err != nil {
-			log.Printf("Error searching existing memories for fact: %v", err)
+			utils.DebugPrint(fmt.Sprintf("Error searching existing memories for fact: %v\n at index: %d\nerr: %v", fact, fact_index, err), m.debug)
 			continue
 		}
 
+		/* ====== VALIDATION SEARCH OUTPUT ====== */
 		countExistingMemories := len(existingMemoriesRaw)
-
 		if countExistingMemories == 0 {
-
-			log.Printf("No existing memories found for fact index: %d", fact_index)
+			utils.DebugPrint(fmt.Sprintf("No existing memories found for fact index: %d", fact_index), m.debug)
 			// 2025/01/09 15:40:46 No existing memories found for fact index: 0
 			// 2025/01/09 15:40:46 Creating memory with data=Está buscando material sobre ingeniería de prompts
 			// result of creating memory tool: 1ca52a41-3393-4777-9c0a-2a25a039770e
@@ -317,29 +306,29 @@ func (m *Memory) Add(
 
 				fmt.Println("result of creating memory tool: " + s)
 			*/
-			fmt.Println("")
+			utils.DebugPrint("\n", m.debug)
 			continue
 		}
 
-		fmt.Printf("Existing memories for fact %d: %d\n", fact_index, len(existingMemoriesRaw))
-		fmt.Println(factStr)
-		fmt.Println("---------------------------------------------")
+		utils.DebugPrint(fmt.Sprintf("Existing memories for fact %d: %d\n", fact_index, len(existingMemoriesRaw)), m.debug)
+		utils.DebugPrint(factStr, m.debug)
+		utils.DebugPrint("---------------------------------------------", m.debug)
 
 		// De aca en adelante encontre memorias en el vectorstore para con este facto.
-		// creo un MemoryItem por cada una y las acumulo para evaluar luego.
 		for i, mem := range existingMemoriesRaw {
 			Score := &mem.Score
 			hash := mem.Payload["hash"].(string)
 			Metadata := mem.Payload
 			Memory := mem.Payload["data"].(string)
 
-			fmt.Printf("f:%d : m:%d - encontrado: %.6f, \n", fact_index, i, *Score)
-			fmt.Printf("*Memory: %s\n", mem.Payload["data"])
-			fmt.Printf("*Metadata: %s - %v - %v - %v\n", mem.Payload["scope"], mem.Payload["related_entities"], mem.Payload["related_events"], mem.Payload["tags"])
-			fmt.Println("")
+			utils.DebugPrint(fmt.Sprintf("f:%d : m:%d - encontrado: %.6f, \n", fact_index, i, *Score), m.debug)
+			utils.DebugPrint(fmt.Sprintf("*Memory: %s\n", mem.Payload["data"]), m.debug)
+			utils.DebugPrint(fmt.Sprintf("*Metadata: %s - %v - %v - %v\n", mem.Payload["scope"], mem.Payload["related_entities"], mem.Payload["related_events"], mem.Payload["tags"]), m.debug)
+			utils.DebugPrint("\n", m.debug)
 			// Existing memories for fact 0: 1
 			// 0. Score: 1.000000, Metadata: map[agent_id:whatsapp created_at:2025-01-09T10:40:47-08:00 data:Está buscando material sobre ingeniería de prompts hash:6e53731be7ca1489e95b9e3cdcc3c58e user_id:Blas Briceño], Memory: Está buscando material sobre ingeniería de prompts
 			// guardar en un acumulador para procesarlas luego
+			// creo un MemoryItem por cada una y las acumulo para evaluar luego.
 			acumuladorMemoriasParaEvaluar = append(acumuladorMemoriasParaEvaluar, models.MemoryItem{
 				ID:       fmt.Sprintf("%d_%s", fact_index, mem.ID),
 				Score:    Score,
@@ -349,102 +338,74 @@ func (m *Memory) Add(
 			})
 		}
 
-		// To search in acumuladorMemoriasParaEvaluar by MemoryItem.ID, you can use a simple loop to iterate over the slice and check each item's ID.
-		// Here's a function to perform the search:
+		utils.DebugPrint("\n", m.debug)
+	}
 
-		// Function to find a MemoryItem by ID
-		// func findMemoryItemByID(id string, items []MemoryItem) *MemoryItem {
-		// 	for _, item := range items {
-		// 		if item.ID == id {
-		// 			return &item
-		// 		}
-		// 	}
-		// 	return nil
-		// }
+	utils.DebugPrint("acum: "+strconv.Itoa(len(acumuladorMemoriasParaEvaluar)), m.debug)
 
-		// // Example usage
-		// searchID := "some_id_to_search"
-		// foundItem := findMemoryItemByID(searchID, acumuladorMemoriasParaEvaluar)
-		// if foundItem != nil {
-		// 	fmt.Printf("Found MemoryItem: %+v\n", *foundItem)
-		// } else {
-		// 	fmt.Println("MemoryItem not found")
-		// }
+	/* ============ chain.MEMORY_UPDATER process =============== */
 
-		// _ = existingMemoriesRaw
+	actionsAgent := chains.NewChain(true)
 
-		// Process existingMemoriesRaw as needed
-		fmt.Println("")
-	} // fin for range relevantFacts
-
-	fmt.Println("acum: " + strconv.Itoa(len(acumuladorMemoriasParaEvaluar)))
-
-	/* end Search for related memories test */
-
-	/* ============END chain.MEMORY_DEDUCTION agent=============== */
-
-	fcallAgent := chains.NewChain(true)
-
-	// 2. generates a prompt using the input messages and sends it to a Large Language Model (LLM) to retrieve new facts
-	// _, err := reductionAgent.MEMORY_REDUCTION(Messages)
-	responseMap, err := fcallAgent.MEMORY_UPDATER(acumuladorMemoriasParaEvaluar, relevantFacts)
+	// 2. generates a prompt using the input messages and sends it to
+	// a Large Language Model (LLM) to retrieve new facts
+	responseMap, err := actionsAgent.MEMORY_UPDATER(acumuladorMemoriasParaEvaluar, relevantFacts)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
 	}
 
-	fmt.Println(fmt.Println("PHASE 2: MEMORY_UPDATER OK"))
+	utils.DebugPrint(fmt.Sprintln("PHASE 2: MEMORY_UPDATER OK"), m.debug)
 
 	// 5. processes the LLM's response, which contains actions to add, update, or delete memories
 	toolCalls := responseMap.ToolCalls
 	functionResults := make([]map[string]interface{}, 0)
 
-	if ok {
-		availableFunctions := map[string]func(map[string]interface{}) (string, error){
-			"add_memory":    m.createMemoryTool,
-			"update_memory": m.updateMemoryToolWrapper,
-			"delete_memory": m.deleteMemoryTool,
-		}
-
-		for _, toolCall := range toolCalls {
-			functionName := toolCall.FunctionCall.Name
-			functionToCall, ok := availableFunctions[functionName]
-			if !ok {
-				log.Printf("Warning: Function %s not found in available functions", functionName)
-				continue
-			}
-
-			argumentsRaw := toolCall.FunctionCall.Arguments
-
-			var functionArgs map[string]interface{}
-			err = json.Unmarshal([]byte(argumentsRaw), &functionArgs)
-			if err != nil {
-				log.Printf("Error unmarshaling function arguments: %v", err)
-				continue
-			}
-
-			fmt.Println(fmt.Printf("[openai_func] func: %s, args: %+v", functionName, functionArgs))
-
-			if functionName == "add_memory" || functionName == "update_memory" {
-				functionArgs["metadata"] = metadata
-			}
-
-			// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
-			functionResultID, err := functionToCall(functionArgs)
-			if err != nil {
-				fmt.Printf("ERROR calling function %s: %v", functionName, err)
-				continue
-			}
-
-			functionResults = append(functionResults, map[string]interface{}{
-				"id":    functionResultID,
-				"event": utils.TrimMemorySuffix(functionName),
-				"data":  functionArgs["data"],
-			})
-
-			fmt.Println(fmt.Printf("Function results: %+v", functionResults))
-			// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
-		}
+	availableFunctions := map[string]func(map[string]interface{}) (string, error){
+		"add_memory":    m.createMemoryTool,
+		"update_memory": m.updateMemoryToolWrapper,
+		"delete_memory": m.deleteMemoryTool,
 	}
+
+	for _, toolCall := range toolCalls {
+		functionName := toolCall.FunctionCall.Name
+		functionToCall, ok := availableFunctions[functionName]
+		if !ok {
+			log.Printf("Warning: Function %s not found in available functions", functionName)
+			continue
+		}
+
+		argumentsRaw := toolCall.FunctionCall.Arguments
+
+		var functionArgs map[string]interface{}
+		err = json.Unmarshal([]byte(argumentsRaw), &functionArgs)
+		if err != nil {
+			log.Printf("Error unmarshaling function arguments: %v", err)
+			continue
+		}
+
+		fmt.Println(fmt.Printf("[openai_func] func: %s, args: %+v", functionName, functionArgs))
+
+		if functionName == "add_memory" || functionName == "update_memory" {
+			functionArgs["metadata"] = metadata
+		}
+
+		// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
+		functionResultID, err := functionToCall(functionArgs)
+		if err != nil {
+			fmt.Printf("ERROR calling function %s: %v", functionName, err)
+			continue
+		}
+
+		functionResults = append(functionResults, map[string]interface{}{
+			"id":    functionResultID,
+			"event": utils.TrimMemorySuffix(functionName),
+			"data":  functionArgs["data"],
+		})
+
+		fmt.Println(fmt.Printf("Function results: %+v", functionResults))
+		// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
+	}
+
 	// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
 	// m.telemetry.CaptureEvent("memGo.add", nil)
 	return map[string]interface{}{"message": "ok", "details": "functionResults"}, nil
