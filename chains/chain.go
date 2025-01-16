@@ -55,28 +55,49 @@ func (c *Chain) MEMORY_DEDUCTION(data string) (map[string]interface{}, error) {
 
 	/* ====== DATA FORMAT ====== */
 	messages := []llms.MessageContent{}
-	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, data))
+
+	strPrompt, err := prompt.Format(map[string]any{
+		"conversation": data,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error formatting prompt: %w", err)
+	}
+
+	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, strPrompt))
+
+	ctx := context.Background()
+	out, err := llm.GenerateContent(ctx, messages)
 
 	/* ====== CHAIN ====== */
-	ctx := context.Background()
-	llmChain := chains.NewLLMChain(llm, prompt)
-	out, err := chains.Call(ctx, llmChain, map[string]any{
-		"conversation": messages,
-	})
+	// llmChain := chains.NewLLMChain(llm, prompt)
+	// out, err := chains.Call(ctx, llmChain, map[string]any{
+	// 	"conversation": messages,
+	// })
 	if err != nil {
 		return nil, fmt.Errorf("error calling LLM: %w", err)
 	}
 
 	/* ====== DEBUG ====== */
 	c.debugPrint("Using model: " + model)
-	c.debugPrint("Output from LLM: " + fmt.Sprintf("%v", out))
-	c.debugPrint("Token Cost: " + fmt.Sprintf("%.6f", utils.EstimateCost(model, out["input_tokens"].(int), out["output_tokens"].(int))))
+	// c.debugPrint("Output from LLM: " + fmt.Sprintf("%v", out))
+	genInfo := out.Choices[0].GenerationInfo
+	promptTokens, ok1 := genInfo["PromptTokens"].(int)
+	completionTokens, ok2 := genInfo["CompletionTokens"].(int)
+	if !ok1 || !ok2 {
+		log.Printf("PromptTokens or CompletionTokens not found in GenerationInfo: %+v", genInfo)
+	}
+
+	totalTokens := int(promptTokens + completionTokens)
+	c.debugPrint("Total Tokens: " + strconv.Itoa(totalTokens))
+	c.debugPrint("Token Cost: " + fmt.Sprintf("%.6f", utils.EstimateCost(model, int(promptTokens), int(completionTokens))))
 
 	/* ====== OUTPUT FORMAT ====== */
-	parsedOutput, ok := out["text"].(string)
-	if !ok {
-		return nil, fmt.Errorf("failed to parse output text")
-	}
+	// parsedOutput, ok := out["text"].(string)
+	parsedOutput := out.Choices[0].Content
+	// .(string)
+	// if !ok {
+	// 	return nil, fmt.Errorf("failed to parse output text")
+	// }
 
 	// remove possible trailing ```json and ``` from llm output text
 	parsedOutput = strings.Trim(parsedOutput, "```json")

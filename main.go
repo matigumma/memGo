@@ -193,6 +193,9 @@ func (m *Memory) Add(
 		return nil, fmt.Errorf("error generating response for MEMORY_DEDUCTION: %w", err)
 	}
 
+	//stop
+	return nil, fmt.Errorf("er")
+
 	/* ====== VALIDATION DEDUCTION OUTPUT ====== */
 	relevantFacts, ok := deduction["relevant_facts"].([]interface{})
 	if !ok {
