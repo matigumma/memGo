@@ -481,6 +481,8 @@ func (m *Memory) Add(
 			log.Printf("Error unmarshaling function arguments: %v", err)
 			continue
 		}
+		// TODO: buscar la forma de reindexar los ID de las memorias que van a tratarse en casos como update / delete
+		// ya que el llm no maneja bien los uuid
 
 		utils.DebugPrint(fmt.Sprintf("[openai_func] func: %s\nargs: %+v\n", functionName, functionArgs), m.debug)
 
