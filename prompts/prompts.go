@@ -345,3 +345,18 @@ ejemplo:
 }
 
 ¿Hechos relevantes, preferencias significativas y recuerdos importantes deducidos:?`
+
+const MEMORY_UPDATER_FOR_EXISTING_AND_RELEVANT = `You are tasked with determining the relevance of newly retrieved facts to the existing memory. Compare the new facts with each memory entry and assign one of the following statuses:
+- MATCH: The fact is identical or highly similar to the memory. For this case dont return any.
+- EXTEND: The fact provides additional information about an existing memory. For this case return an 'updated_memory'
+- CONFLICT: The fact directly contradicts an existing memory. For this case return an 'updated_memory' and 'remove_memories'
+- NEW: The fact is unrelated to existing memories. For this case return same 'fact'
+
+Existing Memory:
+{{.existing_memories}}
+
+New Retrieved Facts:
+{{.relevantFactsText}}
+`
+
+// Return a JSON object where each fact is mapped to one of the above statuses, with a brief explanation of the reasoning for the status assignment.

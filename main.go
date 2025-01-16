@@ -186,15 +186,41 @@ func (m *Memory) Add(
 	// Este paso obtiene informacion generalizada relevante de la data de la memoria guardada en el VectorStore
 	deductionChain := chains.NewChain(m.debug)
 
+	/*
+		// PATTERNS_ATTENTION busca patrones en el mensaje y devuelve un json con las clasificaciones
+
+		patterns, err := deductionChain.PATTERNS_ATTENTION(data)
+		if err != nil {
+			return nil, fmt.Errorf("error generating response for PATTERNS_ATTENTION: %w", err)
+		}
+	*/
+
 	// 2. generates a prompt using the input data and
+
 	// sends it to a Large Language Model (LLM) to retrieve new relevant facts
 	deduction, err := deductionChain.MEMORY_DEDUCTION(data)
 	if err != nil {
 		return nil, fmt.Errorf("error generating response for MEMORY_DEDUCTION: %w", err)
 	}
+	/* ====== DEDUCTION OUTPUT ====== */
 
-	//stop
-	return nil, fmt.Errorf("er")
+	/*
+		{
+			"relevant_facts": [
+				"Recibió un contacto de un posible cliente interesado en implementar un chatbot.",
+				"El chatbot debe analizar conversaciones de WhatsApp para extraer información y contactar números en las conversaciones.",
+				"Considera que ITR puede desarrollar el proyecto, pero tiene dudas sobre el tamaño del cliente y sus posibilidades económicas.",
+				"Está abierto a que otros se pongan en contacto para conectar con el cliente."
+			],
+			"metadata": {
+				"scope": "negocios",
+				"sentiment": "neutral",
+				"related_entities": ["cliente", "chatbot", "WhatsApp", "ITR"],
+				"related_events": ["contacto con cliente", "desarrollo de software"],
+				"tags": ["negocios", "tecnología", "chatbot", "WhatsApp"]
+			}
+		}
+	*/
 
 	/* ====== VALIDATION DEDUCTION OUTPUT ====== */
 	relevantFacts, ok := deduction["relevant_facts"].([]interface{})
@@ -215,10 +241,10 @@ func (m *Memory) Add(
 		}, nil
 	}
 
-	utils.DebugPrint("Relevant facts deducidos: "+strconv.Itoa(cantFacts), m.debug)
+	utils.DebugPrint(fmt.Sprintf("# RELEVANT FACTS DEDUCIDOS: %s\n", strconv.Itoa(cantFacts)), m.debug)
 
 	// el tamaño maximo es de la cantidad de relevant_facts * searchs limit de 5
-	acumuladorMemoriasParaEvaluar := make([]models.MemoryItem, (len(relevantFacts) * 5))
+	acumuladorMemoriasParaEvaluar := make([]models.MemoryItem, 0, len(relevantFacts)*5)
 
 	// metadata = deduction["metadata"]
 	filterss := make(map[string]interface{})
@@ -286,12 +312,79 @@ func (m *Memory) Add(
 			continue
 		}
 
-		/* ====== SEARCH FOR EXISTING MEMORIES IN VS ===== */
+		/* ====== SEARCH FOR max(5) EXISTING MEMORIES IN VS WITH Filters ===== */
 		existingMemoriesRaw, err := m.vectorStore.Search(embeddings32, 5, filterss)
 		if err != nil {
 			utils.DebugPrint(fmt.Sprintf("Error searching existing memories for fact: %v\n at index: %d\nerr: %v", fact, fact_index, err), m.debug)
 			continue
 		}
+
+		/* ====== SEARCH OUTPUT ====== */
+
+		/*
+			[
+			    {
+			        "ID": {
+			            "uuid": "a039176a-3aae-43e1-ab55-e5cfda3c6777"
+			        },
+			        "Score": 0.9994954466819763,
+			        "Payload": {
+			            "agent_id": "whatsapp",
+			            "created_at": "2025-01-10T11:32:53-03:00",
+			            "data": "Un posible cliente necesita implementar un chatbot que analice conversaciones de WhatsApp.",
+			            "hash": "4b2effcf93b2591e0d933f7681974cba",
+			            "related_entities": [
+			                "cliente",
+			                "chatbot",
+			                "WhatsApp"
+			            ],
+			            "related_events": [
+			                "implementación de tecnología",
+			                "análisis de conversaciones"
+			            ],
+			            "scope": "tecnología",
+			            "sentiment": "neutral",
+			            "tags": [
+			                "desarrollo",
+			                "tecnología",
+			                "chatbot",
+			                "WhatsApp"
+			            ],
+			            "user_id": "Blas Briceño"
+			        }
+			    },
+			    {
+			        "ID": {
+			            "uuid": "0b54783e-8048-4f56-950b-b711ba40eb64"
+			        },
+			        "Score": 0.9184341430664062,
+			        "Payload": {
+			            "agent_id": "whatsapp",
+			            "created_at": "2025-01-10T09:56:55-03:00",
+			            "data": "Recibió un contacto de un posible cliente interesado en implementar un chatbot.",
+			            "hash": "e54348e74901e683f8f9fbe3ce5f5e1e",
+			            "related_entities": [
+			                "cliente",
+			                "chatbot",
+			                "WhatsApp"
+			            ],
+			            "related_events": [
+			                "contacto con cliente",
+			                "desarrollo de software"
+			            ],
+			            "scope": "negocios",
+			            "sentiment": "neutral",
+			            "tags": [
+			                "negocios",
+			                "tecnología",
+			                "chatbot",
+			                "WhatsApp"
+			            ],
+			            "user_id": "Blas Briceño"
+			        }
+			    }
+			]
+		*/
 
 		/* ====== VALIDATION SEARCH OUTPUT ====== */
 		countExistingMemories := len(existingMemoriesRaw)
@@ -333,7 +426,8 @@ func (m *Memory) Add(
 			// guardar en un acumulador para procesarlas luego
 			// creo un MemoryItem por cada una y las acumulo para evaluar luego.
 			acumuladorMemoriasParaEvaluar = append(acumuladorMemoriasParaEvaluar, models.MemoryItem{
-				ID:       fmt.Sprintf("%d_%s", fact_index, mem.ID),
+				// ID:       fmt.Sprintf("%d_%s", fact_index, mem.ID),
+				ID:       mem.ID,
 				Score:    Score,
 				Memory:   Memory,
 				Metadata: Metadata,
@@ -344,7 +438,7 @@ func (m *Memory) Add(
 		utils.DebugPrint("\n", m.debug)
 	}
 
-	utils.DebugPrint("acum: "+strconv.Itoa(len(acumuladorMemoriasParaEvaluar)), m.debug)
+	utils.DebugPrint(fmt.Sprintf("# MEMORIAS ENCONTRADAS PARA EVALUAR: %s\n", strconv.Itoa(len(acumuladorMemoriasParaEvaluar))), m.debug)
 
 	/* ============ chain.MEMORY_UPDATER process =============== */
 
@@ -354,8 +448,10 @@ func (m *Memory) Add(
 	// a Large Language Model (LLM) to retrieve new facts
 	responseMap, err := actionsAgent.MEMORY_UPDATER(acumuladorMemoriasParaEvaluar, relevantFacts)
 	if err != nil {
-		return nil, fmt.Errorf("error generating response for memory deduction: %w", err)
+		return nil, fmt.Errorf("error generating response for MEMORY_UPDATER: %w", err)
 	}
+
+	// split memory updater into little steps
 
 	utils.DebugPrint(fmt.Sprintln("PHASE 2: MEMORY_UPDATER OK"), m.debug)
 
@@ -373,7 +469,7 @@ func (m *Memory) Add(
 		functionName := toolCall.FunctionCall.Name
 		functionToCall, ok := availableFunctions[functionName]
 		if !ok {
-			log.Printf("Warning: Function %s not found in available functions", functionName)
+			utils.DebugPrint(fmt.Sprintf("Warning: Function %s not found in available functions", functionName), m.debug)
 			continue
 		}
 
@@ -386,7 +482,7 @@ func (m *Memory) Add(
 			continue
 		}
 
-		fmt.Println(fmt.Printf("[openai_func] func: %s, args: %+v", functionName, functionArgs))
+		utils.DebugPrint(fmt.Sprintf("[openai_func] func: %s\nargs: %+v\n", functionName, functionArgs), m.debug)
 
 		if functionName == "add_memory" || functionName == "update_memory" {
 			functionArgs["metadata"] = metadata
@@ -395,7 +491,7 @@ func (m *Memory) Add(
 		// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
 		functionResultID, err := functionToCall(functionArgs)
 		if err != nil {
-			fmt.Printf("ERROR calling function %s: %v", functionName, err)
+			utils.DebugPrint(fmt.Sprintf("ERROR calling function %s: %v", functionName, err), m.debug)
 			continue
 		}
 
@@ -405,7 +501,7 @@ func (m *Memory) Add(
 			"data":  functionArgs["data"],
 		})
 
-		fmt.Println(fmt.Printf("Function results: %+v", functionResults))
+		utils.DebugPrint(fmt.Sprintf("Function results: \n%+v\n", functionResults), m.debug)
 		// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 	}
 
@@ -687,7 +783,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 }
 
 func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) {
-	fmt.Println(fmt.Printf("Updating memory with memoryID=%s with data=%s", memoryID, data))
+	utils.DebugPrint(fmt.Sprintf("Updating memory with memoryID=%s with data=\n%s", memoryID, data), m.debug)
 
 	existingMemory, err := m.vectorStore.Get(memoryID)
 	if err != nil {
@@ -844,11 +940,11 @@ func main() {
 	agentId := "whatsapp"
 	// runId := "entrevista-1"
 
-	text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
+	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
 	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
 	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
 	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
-	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
+	text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
 	// text := "Hola, buen dia"
 	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
 	res, err := m.Add(
@@ -861,7 +957,7 @@ func main() {
 		nil,      // custom prompt
 	)
 	if err != nil {
-		log.Fatalf("Error adding memory: %v", err)
+		log.Fatalf("Error in Memory.Add: %v", err)
 	}
 
 	fmt.Println(fmt.Printf("Memory add response: %+v\n", res))
