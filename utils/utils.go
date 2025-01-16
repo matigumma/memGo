@@ -64,3 +64,28 @@ func MapToStruct(config map[string]interface{}, target interface{}) error {
 	}
 	return nil
 }
+
+/* ====== TOKEN COUNTER ====== */
+
+// EstimateCost calculates the estimated cost in USD for LLM API usage
+// based on input and output tokens. Currently only supports gpt-4o model.
+/*
+considerations:
+gpt-4o: $2.50 / 1M input tokens
+gpt-4o: $10.00 / 1M output tokens
+gpt-4o-mini $0.150 / 1M input tokens
+gpt-4o-mini $0.600 / 1M output token
+text-embedding-3-small $0.020 / 1M tokens
+*/
+func EstimateCost(llmModel string, inputTokens, outputTokens int) float64 {
+	switch llmModel {
+	case "gpt-4o":
+		return (float64(inputTokens) / 1000.0 * 0.0025) + (float64(outputTokens) / 1000.0 * 0.01)
+	case "gpt-4o-mini":
+		return (float64(inputTokens) / 1000.0 * 0.00015) + (float64(outputTokens) / 1000.0 * 0.0006)
+	case "text-embedding-3-small":
+		return float64(inputTokens) / 1000.0 * 0.00002 // $0.020 per 1M tokens
+	default:
+		return 0
+	}
+}
