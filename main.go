@@ -309,14 +309,14 @@ func (m *Memory) Add(
 		_, embeddings32, err := m.embeddingModel.Embed(factStr)
 		if err != nil {
 			utils.DebugPrint(fmt.Sprintf("Error embedding fact: %v\n at index: %d \nerr: %v", fact, fact_index, err), m.debug)
-			continue
+			return nil, fmt.Errorf("error embedding fact")
 		}
 
 		/* ====== SEARCH FOR max(5) EXISTING MEMORIES IN VS WITH Filters ===== */
 		existingMemoriesRaw, err := m.vectorStore.Search(embeddings32, 5, filterss)
 		if err != nil {
 			utils.DebugPrint(fmt.Sprintf("Error searching existing memories for fact: %v\n at index: %d\nerr: %v", fact, fact_index, err), m.debug)
-			continue
+			return nil, fmt.Errorf("error searching existing memories")
 		}
 
 		/* ====== SEARCH OUTPUT ====== */
@@ -426,12 +426,12 @@ func (m *Memory) Add(
 			// guardar en un acumulador para procesarlas luego
 			// creo un MemoryItem por cada una y las acumulo para evaluar luego.
 			acumuladorMemoriasParaEvaluar = append(acumuladorMemoriasParaEvaluar, models.MemoryItem{
-				// ID:       fmt.Sprintf("%d_%s", fact_index, mem.ID),
-				ID:       mem.ID,
-				Score:    Score,
-				Memory:   Memory,
-				Metadata: Metadata,
-				Hash:     &hash,
+				ArrangeIndex: fact_index,
+				ID:           mem.ID,
+				Score:        Score,
+				Memory:       Memory,
+				Metadata:     Metadata,
+				Hash:         &hash,
 			})
 		}
 
@@ -481,8 +481,18 @@ func (m *Memory) Add(
 			log.Printf("Error unmarshaling function arguments: %v", err)
 			continue
 		}
+
 		// TODO: buscar la forma de reindexar los ID de las memorias que van a tratarse en casos como update / delete
 		// ya que el llm no maneja bien los uuid
+		if functionName == "delete_memory" || functionName == "update_memory" {
+			indexStr := functionArgs["memory_id"].(string)
+			index, err := strconv.Atoi(indexStr)
+			if err != nil {
+				return nil, fmt.Errorf("error converting memory index to int: %w", err)
+			}
+			real_id := acumuladorMemoriasParaEvaluar[index].ID
+			functionArgs["memory_id"] = real_id
+		}
 
 		utils.DebugPrint(fmt.Sprintf("[openai_func] func: %s\nargs: %+v\n", functionName, functionArgs), m.debug)
 
@@ -801,11 +811,11 @@ func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) 
 	newMetadata["hash"] = existingMemory.Payload["hash"]
 	newMetadata["created_at"] = existingMemory.Payload["created_at"]
 
-	pacific, err := time.LoadLocation("America/Los_Angeles")
+	hometime, err := time.LoadLocation("America/Buenos_Aires")
 	if err != nil {
 		return "", fmt.Errorf("error loading timezone: %w", err)
 	}
-	newMetadata["updated_at"] = time.Now().In(pacific).Format(time.RFC3339)
+	newMetadata["updated_at"] = time.Now().In(hometime).Format(time.RFC3339)
 
 	for _, key := range []string{"user_id", "agent_id", "run_id"} {
 		if val, ok := existingMemory.Payload[key]; ok {
@@ -813,16 +823,19 @@ func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) 
 		}
 	}
 
+	//
 	embeddings, _, err := m.embeddingModel.Embed(data)
 	if err != nil {
 		return "", fmt.Errorf("error embedding data: %w", err)
 	}
 
+	// esto inserta el vector
 	err = m.vectorStore.Update(memoryID, embeddings, newMetadata)
 	if err != nil {
 		return "", fmt.Errorf("error updating vector store: %w", err)
 	}
 
+	// ESTO HACE UN UPDATE EN LA DB DE SEGUIMIENTO
 	err = m.db.AddHistory(memoryID, &prevValue, data, "UPDATE", newMetadata["created_at"].(*string), newMetadata["updated_at"].(*string), 0)
 	if err != nil {
 		log.Printf("Error adding history: %v", err) // Non-critical error

@@ -279,8 +279,7 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 	for i, item := range existingMemories {
 		if item.Score != nil {
 			serializedItem := map[string]interface{}{
-				// "real_id": item.ID,
-				"memory_id": item.ID,
+				"memory_id": item.ArrangeIndex,
 				"memory":    item.Memory,
 				"score":     *item.Score,
 			}
