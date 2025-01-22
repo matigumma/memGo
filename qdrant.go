@@ -182,7 +182,7 @@ func (q *Qdrant) Search(query []float32, limit int, filters map[string]interface
 		// to convert the filters map to Qdrant filter structure
 		filter := q._createFilter(filters)
 		searchPoints.Filter = filter
-		fmt.Println("Filter:", filter)
+		// fmt.Println("Filter:", filter)
 	}
 
 	// Perform the search
