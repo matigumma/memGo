@@ -5,6 +5,19 @@ import (
 	"github.com/tmc/langchaingo/llms"
 )
 
+var NO_OP_MEMORY_TOOL = models.Tool{
+	Type: "function",
+	Function: &llms.FunctionDefinition{
+		Name:        "no_op_memory",
+		Description: "No operation on memory",
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+			"required":   []string{},
+		},
+	},
+}
+
 var ADD_MEMORY_TOOL = models.Tool{
 	Type: "function",
 	Function: &llms.FunctionDefinition{
@@ -41,6 +54,32 @@ var UPDATE_MEMORY_TOOL = models.Tool{
 				},
 			},
 			"required": []string{"memory_id", "data"},
+		},
+	},
+}
+
+var RESOLVE_MEMORY_CONFLICT_TOOL = models.Tool{
+	Type: "function",
+	Function: &llms.FunctionDefinition{
+		Name:        "resolve_memory_conflict",
+		Description: "Resolve conflict between two memories using a specified strategy",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"memory_id_1": map[string]interface{}{
+					"type":        "string",
+					"description": "memory_id of the first memory",
+				},
+				"memory_id_2": map[string]interface{}{
+					"type":        "string",
+					"description": "memory_id of the second memory",
+				},
+				"strategy": map[string]interface{}{
+					"type":        "string",
+					"description": "Strategy to resolve the conflict (e.g., 'merge', 'prefer_first', 'prefer_second')",
+				},
+			},
+			"required": []string{"memory_id_1", "memory_id_2", "strategy"},
 		},
 	},
 }
