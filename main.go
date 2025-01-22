@@ -1008,16 +1008,16 @@ func main() {
 	*/
 	/* ===chunked data from transcription audio files=== */
 
-	userId := "Carolina"
-	agentId := "whatsapp"
-	// runId := "entrevista-1"
+	userId := "Carolina"  // | Blas | Matias
+	agentId := "whatsapp" // Channel
+	// runId := "entrevista-1" // | session
 
 	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
 	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
-	text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
-	text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
+	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
+	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
 	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
-	// text := "Hola, buen dia"
+	text := "Hola, buen dia"
 	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
 	res, err := m.Add(
 		text,     // data
@@ -1033,6 +1033,28 @@ func main() {
 	}
 
 	utils.DebugPrint(fmt.Sprintf("Memory add response: %+v\n", res), m.debug)
+
+	// Perform a search to test the Search function
+	searchQuery := "ingeniería de prompts"
+	searchResults, err := m.Search(searchQuery, &userId, &agentId, nil, 5, nil)
+	if err != nil {
+		log.Fatalf("Error searching memory: %v", err)
+	}
+	// fmt.Printf("Search results for query '%s': %+v\n", searchQuery, searchResults)
+
+	fmt.Println("Detailed Search Results:")
+	for i, result := range searchResults {
+		fmt.Printf("Result %d:\n", i+1)
+		fmt.Printf("Memory: %s\n", result["memory"])
+		fmt.Printf("  ID: %s\n", result["id"])
+		fmt.Printf("  Score: %f\n", result["score"])
+		fmt.Printf("  Created At: %s\n", result["created_at"])
+		fmt.Printf("  Updated At: %s\n", result["updated_at"])
+		fmt.Println("  Payload:")
+		for key, value := range result["metadata"].(map[string]interface{}) {
+			fmt.Printf("    %s: %v\n", key, value)
+		}
+	}
 
 	// search, err := m.Search("hello", &userId, nil, nil, 5, nil)
 	// if err != nil {
