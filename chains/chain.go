@@ -313,7 +313,7 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 
 	/* ====== GENERATE CONTENT ====== */
 
-	out, err := llm.GenerateContent(ctx, messages, llms.WithTools([]models.Tool{tools.ADD_MEMORY_TOOL, tools.UPDATE_MEMORY_TOOL, tools.DELETE_MEMORY_TOOL}))
+	out, err := llm.GenerateContent(ctx, messages, llms.WithTools([]models.Tool{tools.ADD_MEMORY_TOOL, tools.UPDATE_MEMORY_TOOL, tools.DELETE_MEMORY_TOOL, tools.NO_OP_MEMORY_TOOL, tools.RESOLVE_MEMORY_CONFLICT_TOOL}))
 	if err != nil {
 		return nil, fmt.Errorf("error calling LLM: %w", err)
 	}
