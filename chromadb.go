@@ -1,6 +1,10 @@
 package main
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/qdrant/go-client/qdrant"
+)
 
 type ChromaDB struct {
 	config map[string]interface{}
@@ -19,13 +23,13 @@ func (c *ChromaDB) Insert(vectors [][]float64, ids []string, payloads []map[stri
 func (c *ChromaDB) Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
 	return nil, errors.New("ChromaDB.Search not implemented")
 }
-func (c *ChromaDB) Get(vectorID string) (*SearchResult, error) {
+func (c *ChromaDB) Get(vectorID string) (*qdrant.RetrievedPoint, error) {
 	return nil, errors.New("ChromaDB.Get not implemented")
 }
 func (c *ChromaDB) List(filters map[string]interface{}, limit int) ([][]SearchResult, error) {
 	return nil, errors.New("ChromaDB.List not implemented")
 }
-func (c *ChromaDB) Update(vectorID string, vector []float64, payload map[string]interface{}) error {
+func (c *ChromaDB) Update(vectorID string, vector []float32, payload map[string]interface{}) error {
 	return errors.New("ChromaDB.Update not implemented")
 }
 func (c *ChromaDB) Delete(vectorID string) error {

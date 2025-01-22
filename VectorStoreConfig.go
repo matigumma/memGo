@@ -3,15 +3,17 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+
+	"github.com/qdrant/go-client/qdrant"
 )
 
 // VectorStore - Interface for Vector Stores (already defined, ensuring it's here for context)
 type VectorStore interface {
 	Insert(vectors [][]float64, ids []string, payloads []map[string]interface{}) error
 	Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error)
-	Get(vectorID string) (*SearchResult, error)
+	Get(vectorID string) (*qdrant.RetrievedPoint, error)
 	List(filters map[string]interface{}, limit int) ([][]SearchResult, error)
-	Update(vectorID string, vector []float64, payload map[string]interface{}) error
+	Update(vectorID string, vector []float32, payload map[string]interface{}) error
 	Delete(vectorID string) error
 	DeleteCol() error
 }
