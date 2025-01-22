@@ -46,6 +46,19 @@ type SearchResult struct {
 	Payload map[string]interface{} `json:"payload"`
 }
 
+/*
+class Record(BaseModel):
+    """
+    Point data
+    """
+
+    id: "ExtendedPointId" = Field(..., description="Point data")
+    payload: Optional["Payload"] = Field(default=None, description="Payload - values assigned to the point")
+    vector: Optional["VectorStruct"] = Field(default=None, description="Vector of the point")
+    shard_key: Optional["ShardKey"] = Field(default=None, description="Shard Key")
+    order_value: Optional["OrderValue"] = Field(default=None, description="Point data")
+*/
+
 // LLM - Interface for LLMs (already defined, ensuring it's here for context)
 // type LLM interface{}
 
@@ -247,7 +260,7 @@ func (m *Memory) Add(
 	acumuladorMemoriasParaEvaluar := make([]models.MemoryItem, 0, len(relevantFacts)*5)
 
 	// metadata = deduction["metadata"]
-	filterss := make(map[string]interface{})
+	filterss := filters
 
 	// VALIDO METADATA Y AGREGO LA METADATA GENERADA DE LA DEDUCCION
 	if metadataMap, ok := deduction["metadata"].(map[string]interface{}); ok {
@@ -463,13 +476,37 @@ func (m *Memory) Add(
 		"add_memory":    m.createMemoryTool,
 		"update_memory": m.updateMemoryToolWrapper,
 		"delete_memory": m.deleteMemoryTool,
+		"no_op_memory":  func(m map[string]interface{}) (string, error) { return "", nil },
+		"resolve_memory_conflict": func(args map[string]interface{}) (string, error) {
+			m1, ok1 := args["memory1"].(map[string]interface{})
+			m2, ok2 := args["memory2"].(map[string]interface{})
+			strategy, ok3 := args["strategy"].(string)
+
+			if !ok1 || !ok2 || !ok3 {
+				return "", errors.New("invalid arguments")
+			}
+
+			utils.DebugPrint(fmt.Sprint("m1: ", m1), m.debug)
+			utils.DebugPrint(fmt.Sprint("m2: ", m2), m.debug)
+			utils.DebugPrint(fmt.Sprint("strategy: ", strategy), m.debug)
+
+			// Implement the conflict resolution logic here
+			utils.DebugPrint("resolve_memory_conflict logic executed", m.debug)
+
+			return "resolved_memory_id", nil
+		},
 	}
 
 	for _, toolCall := range toolCalls {
 		functionName := toolCall.FunctionCall.Name
+		utils.DebugPrint(fmt.Sprintf("Processing function: %s", functionName), m.debug)
 		functionToCall, ok := availableFunctions[functionName]
 		if !ok {
 			utils.DebugPrint(fmt.Sprintf("Warning: Function %s not found in available functions", functionName), m.debug)
+			continue
+		}
+
+		if functionName == "no_op_memory" {
 			continue
 		}
 
@@ -482,15 +519,19 @@ func (m *Memory) Add(
 			continue
 		}
 
-		// TODO: buscar la forma de reindexar los ID de las memorias que van a tratarse en casos como update / delete
-		// ya que el llm no maneja bien los uuid
 		if functionName == "delete_memory" || functionName == "update_memory" {
 			indexStr := functionArgs["memory_id"].(string)
+
+			utils.DebugPrint(fmt.Sprintf("functionName: %s", functionName), m.debug)
+			utils.DebugPrint(fmt.Sprintf("indexStr: %s", indexStr), m.debug)
+
 			index, err := strconv.Atoi(indexStr)
 			if err != nil {
 				return nil, fmt.Errorf("error converting memory index to int: %w", err)
 			}
 			real_id := acumuladorMemoriasParaEvaluar[index].ID
+			utils.DebugPrint(fmt.Sprintf("real_id: %s", real_id), m.debug)
+
 			functionArgs["memory_id"] = real_id
 		}
 
@@ -513,13 +554,13 @@ func (m *Memory) Add(
 			"data":  functionArgs["data"],
 		})
 
-		utils.DebugPrint(fmt.Sprintf("Function results: \n%+v\n", functionResults), m.debug)
+		// utils.DebugPrint(fmt.Sprintf("Function results: \n%+v\n", functionResults), m.debug)
 		// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 	}
 
 	// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
 	// m.telemetry.CaptureEvent("memGo.add", nil)
-	return map[string]interface{}{"message": "ok", "details": "functionResults"}, nil
+	return map[string]interface{}{"message": "ok", "details": functionResults}, nil
 }
 
 func (m *Memory) updateMemoryToolWrapper(args map[string]interface{}) (string, error) {
@@ -553,7 +594,7 @@ func (m *Memory) Get(memoryID string) (map[string]interface{}, error) {
 	}
 
 	memoryItem := map[string]interface{}{
-		"id":         memory.ID,
+		"id":         memory.Id,
 		"memory":     memory.Payload["data"],
 		"hash":       memory.Payload["hash"],
 		"created_at": memory.Payload["created_at"],
@@ -688,6 +729,7 @@ func (m *Memory) Update(memoryID string, data string) (map[string]interface{}, e
 	// m.telemetry.CaptureEvent("memGo.update", map[string]interface{}{"memory_id": memoryID})
 	_, err := m.updateMemoryTool(memoryID, data)
 	if err != nil {
+		utils.DebugPrint("Error updating memory: "+err.Error(), m.debug)
 		return nil, err
 	}
 	return map[string]interface{}{"message": "Memory updated successfully!"}, nil
@@ -769,7 +811,7 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 	hasher.Write([]byte(data))
 	metadata["hash"] = hex.EncodeToString(hasher.Sum(nil))
 
-	pacific, err := time.LoadLocation("America/Buenos_Aires")
+	pacific, err := time.LoadLocation("America/Argentina/Buenos_Aires")
 	if err != nil {
 		return "", fmt.Errorf("error loading timezone: %w", err)
 	}
@@ -795,7 +837,8 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 }
 
 func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) {
-	utils.DebugPrint(fmt.Sprintf("Updating memory with memoryID=%s with data=\n%s", memoryID, data), m.debug)
+	utils.DebugPrint(fmt.Sprintf("Updating memory with memoryID = %s\n", memoryID), m.debug)
+	utils.DebugPrint(fmt.Sprintf("with data = %s\n", data), m.debug)
 
 	existingMemory, err := m.vectorStore.Get(memoryID)
 	if err != nil {
@@ -804,27 +847,35 @@ func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) 
 	if existingMemory == nil {
 		return "", fmt.Errorf("memory with ID %s not found", memoryID)
 	}
-	prevValue := existingMemory.Payload["data"].(string)
+
+	// prevValue := existingMemory.Payload["data"].(string)
+	prevPayload := existingMemory.Payload
+
+	prevValueMap := convertQdrantPayload(prevPayload)
+
+	prevValue := prevValueMap["data"].(string)
+
+	utils.DebugPrint(fmt.Sprintln("old Data: ", prevValue), m.debug)
 
 	newMetadata := make(map[string]interface{})
 	newMetadata["data"] = data
-	newMetadata["hash"] = existingMemory.Payload["hash"]
-	newMetadata["created_at"] = existingMemory.Payload["created_at"]
+	newMetadata["hash"] = prevValueMap["hash"]
+	newMetadata["created_at"] = prevValueMap["created_at"]
 
-	hometime, err := time.LoadLocation("America/Buenos_Aires")
+	hometime, err := time.LoadLocation("America/Argentina/Buenos_Aires")
 	if err != nil {
 		return "", fmt.Errorf("error loading timezone: %w", err)
 	}
 	newMetadata["updated_at"] = time.Now().In(hometime).Format(time.RFC3339)
 
 	for _, key := range []string{"user_id", "agent_id", "run_id"} {
-		if val, ok := existingMemory.Payload[key]; ok {
+		if val, ok := prevValueMap[key]; ok {
 			newMetadata[key] = val
 		}
 	}
 
 	//
-	embeddings, _, err := m.embeddingModel.Embed(data)
+	_, embeddings, err := m.embeddingModel.Embed(data)
 	if err != nil {
 		return "", fmt.Errorf("error embedding data: %w", err)
 	}
@@ -836,10 +887,10 @@ func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) 
 	}
 
 	// ESTO HACE UN UPDATE EN LA DB DE SEGUIMIENTO
-	err = m.db.AddHistory(memoryID, &prevValue, data, "UPDATE", newMetadata["created_at"].(*string), newMetadata["updated_at"].(*string), 0)
-	if err != nil {
-		log.Printf("Error adding history: %v", err) // Non-critical error
-	}
+	// err = m.db.AddHistory(memoryID, &prevValue, data, "UPDATE", newMetadata["created_at"].(*string), newMetadata["updated_at"].(*string), 0)
+	// if err != nil {
+	// 	utils.DebugPrint(fmt.Sprintf("Error adding history: %v", err), m.debug)
+	// }
 	return memoryID, nil
 }
 
@@ -857,14 +908,20 @@ func (m *Memory) deleteMemoryTool(args map[string]interface{}) (string, error) {
 	if existingMemory == nil {
 		return "", fmt.Errorf("memory with ID %s not found for deletion", memoryID)
 	}
-	prevValue := existingMemory.Payload["data"].(string)
+
+	// prevValue := existingMemory.Payload["data"].(string)
+	prevPayload := existingMemory.GetPayload()
+
+	prevValueMap := convertQdrantPayload(prevPayload)
+
+	prevValue := prevValueMap["data"].(string)
 
 	err = m.vectorStore.Delete(memoryID)
 	if err != nil {
 		return "", fmt.Errorf("error deleting from vector store: %w", err)
 	}
 
-	pacific, err := time.LoadLocation("America/Los_Angeles")
+	pacific, err := time.LoadLocation("America/Argentina/Buenos_Aires")
 	if err != nil {
 		return "", fmt.Errorf("error loading timezone: %w", err)
 	}
@@ -951,15 +1008,15 @@ func main() {
 	*/
 	/* ===chunked data from transcription audio files=== */
 
-	userId := "Blas Briceño"
+	userId := "Carolina"
 	agentId := "whatsapp"
 	// runId := "entrevista-1"
 
 	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
 	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
-	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
-	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
-	text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
+	text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
+	text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
+	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
 	// text := "Hola, buen dia"
 	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
 	res, err := m.Add(
@@ -975,7 +1032,7 @@ func main() {
 		log.Fatalf("Error in Memory.Add: %v", err)
 	}
 
-	fmt.Println(fmt.Printf("Memory add response: %+v\n", res))
+	utils.DebugPrint(fmt.Sprintf("Memory add response: %+v\n", res), m.debug)
 
 	// search, err := m.Search("hello", &userId, nil, nil, 5, nil)
 	// if err != nil {
