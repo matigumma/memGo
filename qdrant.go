@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
 )
 
@@ -147,8 +150,8 @@ func (q *Qdrant) _createFilter(filters map[string]interface{}) *qdrant.Filter {
 	// Return the final filter with all conditions
 	// OJO TODO: REVISAR PORQUE NO SON TODAS MUST LAS CONDICIONES , EN CASO DE TAGS O ENTITIES PODRIA SER
 	return &qdrant.Filter{
-		// Must: conditions,
-		Should: conditions,
+		Must: conditions,
+		// Should: conditions,
 	}
 }
 
@@ -179,6 +182,7 @@ func (q *Qdrant) Search(query []float32, limit int, filters map[string]interface
 		// to convert the filters map to Qdrant filter structure
 		filter := q._createFilter(filters)
 		searchPoints.Filter = filter
+		fmt.Println("Filter:", filter)
 	}
 
 	// Perform the search
@@ -247,14 +251,109 @@ func convertQdrantPayload(payload map[string]*qdrant.Value) map[string]interface
 	return result
 }
 
-func (q *Qdrant) Get(vectorID string) (*SearchResult, error) {
-	return nil, errors.New("Qdrant.Get not implemented")
+func (q *Qdrant) Get(vectorID string) (*qdrant.RetrievedPoint, error) {
+	// Convert the vectorID to a Qdrant PointId
+	pointID, err := parsePointID(vectorID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid vector ID: %v", err)
+	}
+
+	// Retrieve the point using the Qdrant client
+	/*
+		Returns:
+
+		[]*RetrievedPoint: A slice of retrieved points.
+		error: An error if the operation fails.
+	*/
+	points, err := q.client.Get(context.Background(), &qdrant.GetPoints{
+		CollectionName: q.config["collection_name"].(string),
+		Ids:            []*qdrant.PointId{pointID},
+		WithPayload:    qdrant.NewWithPayload(true),
+		WithVectors:    qdrant.NewWithVectors(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve point: %v", err)
+	}
+
+	// Check if any points were returned
+	if len(points) == 0 {
+		return nil, fmt.Errorf("no point found with ID: %s", vectorID)
+	}
+
+	// Take the first point (since we requested a single point)
+
+	point := points[0]
+
+	return point, nil
 }
+
+// Helper function to parse vectorID to Qdrant PointId
+func parsePointID(vectorID string) (*qdrant.PointId, error) {
+	// Try parsing as a number first
+	if numID, err := strconv.ParseUint(vectorID, 10, 64); err == nil {
+		// fmt.Printf("Parsed number: %d\n", numID)
+		return qdrant.NewIDNum(numID), nil
+	}
+
+	if strings.HasPrefix(vectorID, "uuid:") {
+		parts := strings.Split(vectorID, ":")
+		if len(parts) == 2 {
+			real_uuid := strings.Trim(parts[1], "\"")
+			// Try parsing as a UUID
+			if uuidID, err := uuid.Parse(real_uuid); err == nil {
+				// fmt.Printf("Parsed UUID: %s\n", uuidID.String())
+				return qdrant.NewID(uuidID.String()), nil
+			}
+		}
+	}
+
+	// If not a number or UUID, treat as a string ID
+	if vectorID == "" {
+		return nil, errors.New("vectorID cannot be empty")
+	}
+
+	// fmt.Printf("Parsed string: %s\n", vectorID)
+	return qdrant.NewID(vectorID), nil
+}
+
 func (q *Qdrant) List(filters map[string]interface{}, limit int) ([][]SearchResult, error) {
 	return nil, errors.New("Qdrant.List not implemented")
 }
-func (q *Qdrant) Update(vectorID string, vector []float64, payload map[string]interface{}) error {
-	return errors.New("Qdrant.Update not implemented")
+func (q *Qdrant) Update(vectorID string, vector []float32, payload map[string]interface{}) error {
+	pointID, err := parsePointID(vectorID)
+	if err != nil {
+		return fmt.Errorf("invalid vector ID: %v", err)
+	}
+
+	//update vector
+	updateVectorResult, err := q.client.UpdateVectors(context.Background(), &qdrant.UpdatePointVectors{
+		CollectionName: q.config["collection_name"].(string),
+		Points: []*qdrant.PointVectors{
+			{
+				Id: pointID,
+				Vectors: qdrant.NewVectorsMap(map[string]*qdrant.Vector{
+					"data": qdrant.NewVector(vector...),
+				}),
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update vector: %v", err)
+	}
+	_ = updateVectorResult
+
+	// update payload
+	payloadResult, err := q.client.SetPayload(context.Background(), &qdrant.SetPayloadPoints{
+		CollectionName: q.config["collection_name"].(string),
+		Payload:        qdrant.NewValueMap(payload),
+		PointsSelector: qdrant.NewPointsSelector(pointID),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update payload: %v", err)
+	}
+	_ = payloadResult
+
+	return nil
 }
 func (q *Qdrant) Delete(vectorID string) error {
 	return errors.New("Qdrant.Delete not implemented")
