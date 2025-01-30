@@ -5,11 +5,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/matigumma/memGo/prompts"
 	"github.com/tmc/langchaingo/llms"
 )
 
-func DebugPrint(message string, debug bool) {
+func DebugPrint(message string, debug bool, gc *gin.Context) {
+	if gc != nil {
+		// gc.SSEvent("message", message)
+		content := fmt.Sprintf("data: %s\n\n", message)
+		_, err := gc.Writer.Write([]byte(content))
+		if err != nil {
+			fmt.Println("Error writing message:", err)
+		}
+		gc.Writer.Flush()
+	}
 	if debug {
 		fmt.Println("DEBUG:::", message)
 		// fmt.Println("") // print a separated line

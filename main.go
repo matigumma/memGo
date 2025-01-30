@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/matigumma/memGo/chains"
 	"github.com/matigumma/memGo/models"
@@ -158,6 +159,7 @@ func (m *Memory) Add(
 	metadata map[string]interface{}, // Metadata to store with the memory. Defaults nil
 	filters map[string]interface{}, // Filters to apply to the search. Defaults nil
 	prompt *string, // Prompt to use for memory deduction. Defaults nil.
+	gc *gin.Context,
 ) (map[string]interface{}, error) {
 	fmt.Println("Memory.Add")
 	/* ====== VALICACIONES ====== */
@@ -192,12 +194,12 @@ func (m *Memory) Add(
 
 	// en este paso prepara la ejecucion asincrona de la deduccion de la memoria en el vectorstore
 
-	utils.DebugPrint("Raw INPUT Data: \n"+data, m.debug)
+	utils.DebugPrint("Raw INPUT Data: "+data, m.debug, gc)
 
 	/* ============= chain.MEMORY_DEDUCTION process ============== */
 
 	// Este paso obtiene informacion generalizada relevante de la data de la memoria guardada en el VectorStore
-	deductionChain := chains.NewChain(m.debug)
+	deductionChain := chains.NewChain(m.debug, gc)
 
 	/*
 		// PATTERNS_ATTENTION busca patrones en el mensaje y devuelve un json con las clasificaciones
@@ -254,7 +256,7 @@ func (m *Memory) Add(
 		}, nil
 	}
 
-	utils.DebugPrint(fmt.Sprintf("# RELEVANT FACTS DEDUCIDOS: %s\n", strconv.Itoa(cantFacts)), m.debug)
+	utils.DebugPrint(fmt.Sprintf("# RELEVANT FACTS DEDUCIDOS: %s\n", strconv.Itoa(cantFacts)), m.debug, gc)
 
 	// el tamaño maximo es de la cantidad de relevant_facts * searchs limit de 5
 	acumuladorMemoriasParaEvaluar := make([]models.MemoryItem, 0, len(relevantFacts)*5)
@@ -315,20 +317,20 @@ func (m *Memory) Add(
 	for fact_index, fact := range relevantFacts {
 		factStr, ok := fact.(string)
 		if !ok {
-			utils.DebugPrint(fmt.Sprintf("Error skipping non-string fact: %v\n at index: %d", fact, fact_index), m.debug)
+			utils.DebugPrint(fmt.Sprintf("Error skipping non-string fact: %v\n at index: %d", fact, fact_index), m.debug, gc)
 			continue
 		}
 
 		_, embeddings32, err := m.embeddingModel.Embed(factStr)
 		if err != nil {
-			utils.DebugPrint(fmt.Sprintf("Error embedding fact: %v\n at index: %d \nerr: %v", fact, fact_index, err), m.debug)
+			utils.DebugPrint(fmt.Sprintf("Error embedding fact: %v\n at index: %d \nerr: %v", fact, fact_index, err), m.debug, gc)
 			return nil, fmt.Errorf("error embedding fact")
 		}
 
 		/* ====== SEARCH FOR max(5) EXISTING MEMORIES IN VS WITH Filters ===== */
 		existingMemoriesRaw, err := m.vectorStore.Search(embeddings32, 5, filterss)
 		if err != nil {
-			utils.DebugPrint(fmt.Sprintf("Error searching existing memories for fact: %v\n at index: %d\nerr: %v", fact, fact_index, err), m.debug)
+			utils.DebugPrint(fmt.Sprintf("Error searching existing memories for fact: %v\n at index: %d\nerr: %v", fact, fact_index, err), m.debug, gc)
 			return nil, fmt.Errorf("error searching existing memories")
 		}
 
@@ -402,7 +404,7 @@ func (m *Memory) Add(
 		/* ====== VALIDATION SEARCH OUTPUT ====== */
 		countExistingMemories := len(existingMemoriesRaw)
 		if countExistingMemories == 0 {
-			utils.DebugPrint(fmt.Sprintf("No existing memories found for fact index: %d", fact_index), m.debug)
+			utils.DebugPrint(fmt.Sprintf("No existing memories found for fact index: %d", fact_index), m.debug, gc)
 			// 2025/01/09 15:40:46 No existing memories found for fact index: 0
 			// 2025/01/09 15:40:46 Creating memory with data=Está buscando material sobre ingeniería de prompts
 			// result of creating memory tool: 1ca52a41-3393-4777-9c0a-2a25a039770e
@@ -415,13 +417,13 @@ func (m *Memory) Add(
 
 				fmt.Println("result of creating memory tool: " + s)
 			*/
-			utils.DebugPrint("\n", m.debug)
+			utils.DebugPrint("\n", m.debug, gc)
 			continue
 		}
 
-		utils.DebugPrint(fmt.Sprintf("Existing memories for fact %d: %d\n", fact_index, len(existingMemoriesRaw)), m.debug)
-		utils.DebugPrint(factStr, m.debug)
-		utils.DebugPrint("---------------------------------------------", m.debug)
+		utils.DebugPrint(fmt.Sprintf("Existing memories for fact %d: %d\n", fact_index, len(existingMemoriesRaw)), m.debug, gc)
+		utils.DebugPrint(factStr, m.debug, gc)
+		utils.DebugPrint("---------------------------------------------", m.debug, gc)
 
 		// De aca en adelante encontre memorias en el vectorstore para con este facto.
 		for i, mem := range existingMemoriesRaw {
@@ -430,10 +432,10 @@ func (m *Memory) Add(
 			Metadata := mem.Payload
 			Memory := mem.Payload["data"].(string)
 
-			utils.DebugPrint(fmt.Sprintf("f:%d : m:%d - encontrado: %.6f, \n", fact_index, i, *Score), m.debug)
-			utils.DebugPrint(fmt.Sprintf("*Memory: %s\n", mem.Payload["data"]), m.debug)
-			utils.DebugPrint(fmt.Sprintf("*Metadata: %s - %v - %v - %v\n", mem.Payload["scope"], mem.Payload["related_entities"], mem.Payload["related_events"], mem.Payload["tags"]), m.debug)
-			utils.DebugPrint("\n", m.debug)
+			utils.DebugPrint(fmt.Sprintf("f:%d : m:%d - encontrado: %.6f, \n", fact_index, i, *Score), m.debug, gc)
+			utils.DebugPrint(fmt.Sprintf("*Memory: %s\n", mem.Payload["data"]), m.debug, gc)
+			utils.DebugPrint(fmt.Sprintf("*Metadata: %s - %v - %v - %v\n", mem.Payload["scope"], mem.Payload["related_entities"], mem.Payload["related_events"], mem.Payload["tags"]), m.debug, gc)
+			utils.DebugPrint("\n", m.debug, gc)
 			// Existing memories for fact 0: 1
 			// 0. Score: 1.000000, Metadata: map[agent_id:whatsapp created_at:2025-01-09T10:40:47-08:00 data:Está buscando material sobre ingeniería de prompts hash:6e53731be7ca1489e95b9e3cdcc3c58e user_id:Blas Briceño], Memory: Está buscando material sobre ingeniería de prompts
 			// guardar en un acumulador para procesarlas luego
@@ -448,14 +450,14 @@ func (m *Memory) Add(
 			})
 		}
 
-		utils.DebugPrint("\n", m.debug)
+		utils.DebugPrint("\n", m.debug, gc)
 	}
 
-	utils.DebugPrint(fmt.Sprintf("# MEMORIAS ENCONTRADAS PARA EVALUAR: %s\n", strconv.Itoa(len(acumuladorMemoriasParaEvaluar))), m.debug)
+	utils.DebugPrint(fmt.Sprintf("# MEMORIAS ENCONTRADAS PARA EVALUAR: %s\n", strconv.Itoa(len(acumuladorMemoriasParaEvaluar))), m.debug, gc)
 
 	/* ============ chain.MEMORY_UPDATER process =============== */
 
-	actionsAgent := chains.NewChain(true)
+	actionsAgent := chains.NewChain(true, gc)
 
 	// 2. generates a prompt using the input messages and sends it to
 	// a Large Language Model (LLM) to retrieve new facts
@@ -466,15 +468,17 @@ func (m *Memory) Add(
 
 	// split memory updater into little steps
 
-	utils.DebugPrint(fmt.Sprintln("PHASE 2: MEMORY_UPDATER OK"), m.debug)
+	utils.DebugPrint(fmt.Sprintln("PHASE 2: MEMORY_UPDATER OK"), m.debug, gc)
 
 	// 5. processes the LLM's response, which contains actions to add, update, or delete memories
 	toolCalls := responseMap.ToolCalls
 	functionResults := make([]map[string]interface{}, 0)
 
 	availableFunctions := map[string]func(map[string]interface{}) (string, error){
-		"add_memory":    m.createMemoryTool,
-		"update_memory": m.updateMemoryToolWrapper,
+		"add_memory": m.createMemoryTool,
+		"update_memory": func(args map[string]interface{}) (string, error) {
+			return m.updateMemoryToolWrapper(args, gc)
+		},
 		"delete_memory": m.deleteMemoryTool,
 		"no_op_memory":  func(m map[string]interface{}) (string, error) { return "", nil },
 		"resolve_memory_conflict": func(args map[string]interface{}) (string, error) {
@@ -486,12 +490,12 @@ func (m *Memory) Add(
 				return "", errors.New("invalid arguments")
 			}
 
-			utils.DebugPrint(fmt.Sprint("m1: ", m1), m.debug)
-			utils.DebugPrint(fmt.Sprint("m2: ", m2), m.debug)
-			utils.DebugPrint(fmt.Sprint("strategy: ", strategy), m.debug)
+			utils.DebugPrint(fmt.Sprint("m1: ", m1), m.debug, gc)
+			utils.DebugPrint(fmt.Sprint("m2: ", m2), m.debug, gc)
+			utils.DebugPrint(fmt.Sprint("strategy: ", strategy), m.debug, gc)
 
 			// Implement the conflict resolution logic here
-			utils.DebugPrint("resolve_memory_conflict logic executed", m.debug)
+			utils.DebugPrint("resolve_memory_conflict logic executed", m.debug, gc)
 
 			return "resolved_memory_id", nil
 		},
@@ -499,10 +503,10 @@ func (m *Memory) Add(
 
 	for _, toolCall := range toolCalls {
 		functionName := toolCall.FunctionCall.Name
-		utils.DebugPrint(fmt.Sprintf("Processing function: %s", functionName), m.debug)
+		utils.DebugPrint(fmt.Sprintf("Processing function: %s", functionName), m.debug, gc)
 		functionToCall, ok := availableFunctions[functionName]
 		if !ok {
-			utils.DebugPrint(fmt.Sprintf("Warning: Function %s not found in available functions", functionName), m.debug)
+			utils.DebugPrint(fmt.Sprintf("Warning: Function %s not found in available functions", functionName), m.debug, gc)
 			continue
 		}
 
@@ -522,20 +526,20 @@ func (m *Memory) Add(
 		if functionName == "delete_memory" || functionName == "update_memory" {
 			indexStr := functionArgs["memory_id"].(string)
 
-			utils.DebugPrint(fmt.Sprintf("functionName: %s", functionName), m.debug)
-			utils.DebugPrint(fmt.Sprintf("indexStr: %s", indexStr), m.debug)
+			utils.DebugPrint(fmt.Sprintf("functionName: %s", functionName), m.debug, gc)
+			utils.DebugPrint(fmt.Sprintf("indexStr: %s", indexStr), m.debug, gc)
 
 			index, err := strconv.Atoi(indexStr)
 			if err != nil {
 				return nil, fmt.Errorf("error converting memory index to int: %w", err)
 			}
 			real_id := acumuladorMemoriasParaEvaluar[index].ID
-			utils.DebugPrint(fmt.Sprintf("real_id: %s", real_id), m.debug)
+			utils.DebugPrint(fmt.Sprintf("real_id: %s", real_id), m.debug, gc)
 
 			functionArgs["memory_id"] = real_id
 		}
 
-		utils.DebugPrint(fmt.Sprintf("[openai_func] func: %s\nargs: %+v\n", functionName, functionArgs), m.debug)
+		utils.DebugPrint(fmt.Sprintf("[openai_func] func: %s\nargs: %+v\n", functionName, functionArgs), m.debug, gc)
 
 		if functionName == "add_memory" || functionName == "update_memory" {
 			functionArgs["metadata"] = metadata
@@ -544,7 +548,7 @@ func (m *Memory) Add(
 		// 6. performs the actions on the memories, creating new ones, updating existing ones, or deleting them.
 		functionResultID, err := functionToCall(functionArgs)
 		if err != nil {
-			utils.DebugPrint(fmt.Sprintf("ERROR calling function %s: %v", functionName, err), m.debug)
+			utils.DebugPrint(fmt.Sprintf("ERROR calling function %s: %v", functionName, err), m.debug, gc)
 			continue
 		}
 
@@ -558,12 +562,13 @@ func (m *Memory) Add(
 		// m.telemetry.CaptureEvent("memGo.add.function_call", map[string]interface{}{"memory_id": functionResultID, "function_name": functionName})
 	}
 
+	utils.DebugPrint("end", m.debug, gc)
 	// 7. returns a list of memories with their IDs, text, and events (ADD, UPDATE, DELETE, or NONE)
 	// m.telemetry.CaptureEvent("memGo.add", nil)
 	return map[string]interface{}{"message": "ok", "details": functionResults}, nil
 }
 
-func (m *Memory) updateMemoryToolWrapper(args map[string]interface{}) (string, error) {
+func (m *Memory) updateMemoryToolWrapper(args map[string]interface{}, gc *gin.Context) (string, error) {
 	memoryID, ok := args["memory_id"].(string)
 	if !ok {
 		return "", errors.New("memory_id not found or not a string")
@@ -572,7 +577,7 @@ func (m *Memory) updateMemoryToolWrapper(args map[string]interface{}) (string, e
 	if !ok {
 		return "", errors.New("data not found or not a string")
 	}
-	return m.updateMemoryTool(memoryID, data)
+	return m.updateMemoryTool(memoryID, data, gc)
 }
 
 // Get retrieves a memory by ID
@@ -725,11 +730,11 @@ func (m *Memory) Search(query string, userID *string, agentID *string, runID *st
 }
 
 // Update updates a memory by ID
-func (m *Memory) Update(memoryID string, data string) (map[string]interface{}, error) {
+func (m *Memory) Update(memoryID string, data string, gc *gin.Context) (map[string]interface{}, error) {
 	// m.telemetry.CaptureEvent("memGo.update", map[string]interface{}{"memory_id": memoryID})
-	_, err := m.updateMemoryTool(memoryID, data)
+	_, err := m.updateMemoryTool(memoryID, data, gc)
 	if err != nil {
-		utils.DebugPrint("Error updating memory: "+err.Error(), m.debug)
+		utils.DebugPrint("Error updating memory: "+err.Error(), m.debug, gc)
 		return nil, err
 	}
 	return map[string]interface{}{"message": "Memory updated successfully!"}, nil
@@ -836,9 +841,9 @@ func (m *Memory) createMemoryTool(args map[string]interface{}) (string, error) {
 	return memoryID, nil
 }
 
-func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) {
-	utils.DebugPrint(fmt.Sprintf("Updating memory with memoryID = %s\n", memoryID), m.debug)
-	utils.DebugPrint(fmt.Sprintf("with data = %s\n", data), m.debug)
+func (m *Memory) updateMemoryTool(memoryID string, data string, gc *gin.Context) (string, error) {
+	utils.DebugPrint(fmt.Sprintf("Updating memory with memoryID = %s\n", memoryID), m.debug, gc)
+	utils.DebugPrint(fmt.Sprintf("with data = %s\n", data), m.debug, gc)
 
 	existingMemory, err := m.vectorStore.Get(memoryID)
 	if err != nil {
@@ -855,7 +860,7 @@ func (m *Memory) updateMemoryTool(memoryID string, data string) (string, error) 
 
 	prevValue := prevValueMap["data"].(string)
 
-	utils.DebugPrint(fmt.Sprintln("old Data: ", prevValue), m.debug)
+	utils.DebugPrint(fmt.Sprintln("old Data: ", prevValue), m.debug, gc)
 
 	newMetadata := make(map[string]interface{})
 	newMetadata["data"] = data
@@ -958,103 +963,7 @@ func main() {
 
 	m := NewMemory(MemoryConfig)
 
-	// userId := "pgp"
-	// agentId := "carolina"
-	// runId := "entrevista-1"
-
-	/* ===mock data from transcription interview=== */
-	/*
-		// Read the content of transcription.txt
-		transcriptionContent, err := os.ReadFile("/Users/agrosistemas/Mati/test-golang/transcription.txt")
-		if err != nil {
-			log.Panicf("error reading transcription file: %v", err)
-		}
-
-		// Convert the content to a string
-		transcriptionText := string(transcriptionContent)
-	*/
-	/* ===mock data from transcription interview=== */
-
-	/* ===chunked data from transcription audio files=== */
-	/*
-		// Read the content of chunk_transcription.json
-		chunkFileContent, err := os.ReadFile("/Users/agrosistemas/Mati/test-golang/chunked_transcription.json")
-		if err != nil {
-			log.Panicf("error reading chunk transcription file: %v", err)
-		}
-
-		// Parse the JSON content
-		var chunkData struct {
-			Chunks []string `json:"chunks"`
-		}
-		err = json.Unmarshal(chunkFileContent, &chunkData)
-		if err != nil {
-			log.Panicf("error unmarshaling chunk transcription data: %v", err)
-		}
-
-		metadata := map[string]interface{}{
-			"fecha": time.Now().Format(time.RFC3339),
-		}
-
-		// Iterate over each chunk and process with m.Add
-		for index, chunk := range chunkData.Chunks {
-			fmt.Println("chunk index: ", index)
-			metadata["chunk_[120]_index"] = index
-			_, err := m.Add(chunk, &userId, &agentId, &runId, metadata, nil, nil) // Pass metadata directly without using &
-			if err != nil {
-				log.Printf("Error adding memory for chunk: %v", err)
-			}
-		}
-	*/
-	/* ===chunked data from transcription audio files=== */
-
-	userId := "Carolina"  // | Blas | Matias
-	agentId := "whatsapp" // Channel
-	// runId := "entrevista-1" // | session
-
-	// text := "Hola, me contactó un posible cliente que necesita implementar un chatboot que participando de un grupo de whatsapp analice las conversaciones para encontrar cierta información y después al encontrarse con ciertos parámetros contacte por whatsapp a números que se encuentran en la conversación misma y le mande un mensaje y tal vez le permita ingresar información que debe ser persistida en una base de datos. En ITR podemos hacer este desarrollo, pero no me cierra el tamaño del cliente / posibilidades económicas. Si a alguien le interesa contácteme por privado para ponerlo en contacto con el cliente"
-	// text := "vengo acá a recordarles que mañana a las 17 hacemos el brainstorming y reunión de encuentro, con los que puedan sumarse."
-	// text := "Buen día, consultita en el grupo ¿han socializado algún material sobre ingeniería de prompts?"
-	// text += "Para darles contexto estoy preparando un documento de prompts para que le sirva a 3 equipos (copy,diseño y comtent) para la empresa en la que trabajo. De modo que quería tener otros recursos bibliográficas para ampliar el material"
-	// text := "Gus, creo que podemos arrancar con una esa semana, y después a fin de enero la continuamos con una más.. no creo que con una sola reunión semejante profusión de ideas se pueda hacer converger de una"
-	text := "Hola, buen dia"
-	// text := "hay que quedar un monto para 10 siguientes y te envió por crypto. El anterior fueron $100 equivalentes en crypto por 10 adicionales, lo repetimos?"
-	res, err := m.Add(
-		text,     // data
-		&userId,  // user_id
-		&agentId, // agent_id
-		nil,      // run_id
-		nil,      // metadata
-		nil,      // filtros
-		nil,      // custom prompt
-	)
-	if err != nil {
-		log.Fatalf("Error in Memory.Add: %v", err)
-	}
-
-	utils.DebugPrint(fmt.Sprintf("Memory add response: %+v\n", res), m.debug)
-
-	// Perform a search to test the Search function
-	searchQuery := "ingeniería de prompts"
-	searchResults, err := m.Search(searchQuery, &userId, &agentId, nil, 5, nil)
-	if err != nil {
-		log.Fatalf("Error searching memory: %v", err)
-	}
-	// fmt.Printf("Search results for query '%s': %+v\n", searchQuery, searchResults)
-
-	fmt.Println("Detailed Search Results:")
-	for i, result := range searchResults {
-		fmt.Printf("Result %d:\n", i+1)
-		fmt.Printf("Memory: %s\n", result["memory"])
-		fmt.Printf("  ID: %s\n", result["id"])
-		fmt.Printf("  Score: %f\n", result["score"])
-		fmt.Printf("  Created At: %s\n", result["created_at"])
-		fmt.Printf("  Updated At: %s\n", result["updated_at"])
-		fmt.Println("  Payload:")
-		for key, value := range result["metadata"].(map[string]interface{}) {
-			fmt.Printf("    %s: %v\n", key, value)
-		}
-	}
+	StartServer(m)
 
 	// search, err := m.Search("hello", &userId, nil, nil, 5, nil)
 	// if err != nil {

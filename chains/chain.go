@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/matigumma/memGo/models"
 	p "github.com/matigumma/memGo/prompts"
 	"github.com/matigumma/memGo/tools"
@@ -20,10 +21,12 @@ import (
 
 type Chain struct {
 	debug bool
+	gc    *gin.Context
 }
 
-func NewChain(debug bool) *Chain {
+func NewChain(debug bool, gc *gin.Context) *Chain {
 	return &Chain{
+		gc:    gc,
 		debug: debug,
 	}
 }

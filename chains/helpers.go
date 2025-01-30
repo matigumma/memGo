@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/matigumma/memGo/utils"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -28,6 +29,9 @@ func (c *Chain) parseLlmsMessagesContent(messages []llms.MessageContent) string 
 }
 
 func (c *Chain) debugPrint(message string) {
+	if c.gc != nil {
+		utils.DebugPrint(message, c.debug, c.gc)
+	}
 	if c.debug {
 		fmt.Println("DEBUG:::", message)
 		fmt.Println("") // print a separated line
