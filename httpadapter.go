@@ -58,7 +58,7 @@ func addMemoryHandler(c *gin.Context, m *Memory) {
 		nil,                  // metadata
 		nil,                  // filters
 		nil,                  // custom prompt
-		c,
+		c,                    // gin context
 	)
 	if err != nil {
 		log.Fatalf("Error in Memory.Add: %v", err)

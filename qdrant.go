@@ -39,15 +39,23 @@ func NewQdrant(config map[string]interface{}) VectorStore {
 		panic(err)
 	}
 
-	err = client.CreateCollection(context.Background(), &qdrant.CreateCollection{
-		CollectionName: config["collection_name"].(string),
-		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
-			Size:     uint64(config["embedding_model_dims"].(int)),
-			Distance: qdrant.Distance_Cosine,
-		}),
-	})
+	collection, err := client.GetCollectionInfo(context.Background(), config["collection_name"].(string))
+
 	if err != nil {
 		panic(err)
+	}
+
+	if collection == nil {
+		err = client.CreateCollection(context.Background(), &qdrant.CreateCollection{
+			CollectionName: config["collection_name"].(string),
+			VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+				Size:     uint64(config["embedding_model_dims"].(int)),
+				Distance: qdrant.Distance_Cosine,
+			}),
+		})
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return &Qdrant{config: config, client: client}

@@ -122,7 +122,7 @@ func NewMemory(config MemoryConfig) *Memory {
 		db:             db,          //SQLiteManager
 		telemetry:      nil,         //*phtelemetry,
 		collectionName: "",
-		debug:          true,
+		debug:          false,
 		// collectionName: config.VectorStore.Config["CollectionName"],
 	}
 
