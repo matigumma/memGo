@@ -283,7 +283,7 @@ func (c *Chain) MEMORY_UPDATER(existingMemories []models.MemoryItem, relevantFac
 		if item.Score != nil {
 			serializedItem := map[string]interface{}{
 				"memory_id": item.ArrangeIndex,
-				"memory":    item.Memory,
+				"memory":    item.Memory, // TODO: agregarle la metadata al memory para que se vea el contexto de cada memoria.
 				"score":     *item.Score,
 			}
 			serializedExistingMemories[i] = serializedItem
