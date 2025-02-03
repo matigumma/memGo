@@ -32,10 +32,10 @@ func (c *Chain) debugPrint(message string) {
 	if c.gc != nil {
 		utils.DebugPrint(message, c.debug, c.gc)
 	}
-	if c.debug {
-		fmt.Println("DEBUG:::", message)
-		fmt.Println("") // print a separated line
-	}
+	// if c.debug {
+	// 	fmt.Println("DEBUG:::", message)
+	// 	fmt.Println("") // print a separated line
+	// }
 }
 
 // updateMessageHistory updates the message history with the assistant's

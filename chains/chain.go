@@ -90,9 +90,10 @@ Responde en formato JSON
 		return nil, fmt.Errorf("error calling LLM: %w", err)
 	}
 
-	/* ====== DEBUG ====== */
 	c.debugPrint("Using model: " + model)
 	c.debugPrint("Output from LLM: " + fmt.Sprintf("%+v", out.Choices[0].Content))
+	/* ====== DEBUG ====== */
+	fmt.Println("Output from LLM: " + fmt.Sprintf("%+v", out.Choices[0].Content))
 
 	genInfo := out.Choices[0].GenerationInfo
 	promptTokens, ok1 := genInfo["PromptTokens"].(int)

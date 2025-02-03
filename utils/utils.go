@@ -12,12 +12,12 @@ import (
 
 func DebugPrint(message string, debug bool, gc *gin.Context) {
 	if gc != nil {
-		// gc.SSEvent("message", message)
-		content := fmt.Sprintf("data: %s\n\n", message)
-		_, err := gc.Writer.Write([]byte(content))
-		if err != nil {
-			fmt.Println("Error writing message:", err)
-		}
+		gc.SSEvent("message", message)
+		// content := fmt.Sprintf("data: %s\n\n", message)
+		// _, err := gc.Writer.Write([]byte(content))
+		// if err != nil {
+		// 	fmt.Println("Error writing message:", err)
+		// }
 		gc.Writer.Flush()
 	}
 	if debug {
