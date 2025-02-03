@@ -68,24 +68,35 @@ func addMemoryHandler(c *gin.Context, m *Memory) {
 
 }
 
+func float32Ptr(f float32) *float32 {
+	return &f
+}
+
 // Handler for /v1/memory/retrieve
 func retrieveMemoryHandler(c *gin.Context, m *Memory) {
-	query := c.Query("query")
-	userID := c.Query("user_id")
-	agentID := c.Query("agent_id")
-	// runID := c.Query("run_id")
-	if query == "" || userID == "" || agentID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Query, userID, agentID parameter is required"})
-		return
+	// Parse JSON
+	var json struct {
+		Query   string `json:"query" binding:"required"`
+		UserID  string `json:"user_id" binding:"required"`
+		AgentID string `json:"agent_id" binding:"required"`
 	}
 
-	// Perform a search to test the Search function
-	// searchQuery := "ingeniería de prompts"
-	searchResults, err := m.Search(query, &userID, &agentID, nil, 5, nil)
+	if err := c.Bind(&json); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	query := json.Query
+	userID := json.UserID
+	agentID := json.AgentID
+
+	fmt.Printf("Query %s, user_id %s, agent_id %s\n", query, userID, agentID)
+
+	// declaro busqueda con un threshold  muy permisivo
+	searchResults, err := m.Search(query, &userID, &agentID, nil, 5, nil, float32Ptr(0.8))
 	if err != nil {
 		log.Fatalf("Error searching memory: %v", err)
 	}
-	// fmt.Printf("Search results for query '%s': %+v\n", searchQuery, searchResults)
+	fmt.Printf("Search results for query : %+v\n", searchResults)
 
 	Thoughts := []string{}
 	for i, result := range searchResults {
@@ -110,14 +121,94 @@ func retrieveMemoryHandler(c *gin.Context, m *Memory) {
 // StartServer initializes and starts the Gin server
 func StartServer(m *Memory) {
 	r := gin.Default()
+
+	// Disable CORS
+	r.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	})
+
 	// Define routes
 	r.POST("/v1/memory/add", func(c *gin.Context) {
 		addMemoryHandler(c, m)
 	})
-	r.GET("/v1/memory/retrieve", func(c *gin.Context) {
+	r.POST("/v1/memory/retrieve", func(c *gin.Context) {
 		retrieveMemoryHandler(c, m)
+	})
+	r.POST("/v1/memory/history", func(c *gin.Context) {
+		historyMemoryHandler(c, m)
 	})
 
 	// Start the server
 	r.Run(":8080")
+}
+
+type Message struct {
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	Timestamp time.Time `json:"timestamp"`
+	Reactions struct {
+		Likes    int `json:"likes"`
+		Dislikes int `json:"dislikes"`
+	} `json:"reactions"`
+	Saved bool `json:"saved"`
+}
+
+// Handler for /v1/memory/history
+func historyMemoryHandler(c *gin.Context, m *Memory) {
+	messages := []Message{
+		{
+			ID:        "1",
+			Role:      "user",
+			Content:   "Can you help me optimize my React application?",
+			Timestamp: time.Date(2024, 3, 10, 10, 30, 0, 0, time.UTC),
+			Reactions: struct {
+				Likes    int `json:"likes"`
+				Dislikes int `json:"dislikes"`
+			}{Likes: 2, Dislikes: 0},
+			Saved: true,
+		},
+		{
+			ID:        "2",
+			Role:      "assistant",
+			Content:   "Of course! There are several ways to optimize a React application. Some key areas to focus on include:\n\n1. Implementing proper memo and useMemo usage\n2. Optimizing bundle size\n3. Implementing code splitting\n4. Using proper key props in lists\n\nWhich area would you like to explore first?",
+			Timestamp: time.Date(2024, 3, 10, 10, 30, 30, 0, time.UTC),
+			Reactions: struct {
+				Likes    int `json:"likes"`
+				Dislikes int `json:"dislikes"`
+			}{Likes: 3, Dislikes: 0},
+			Saved: false,
+		},
+		{
+			ID:        "3",
+			Role:      "user",
+			Content:   "Let's start with code splitting. How can I implement it effectively?",
+			Timestamp: time.Date(2024, 3, 11, 15, 45, 0, 0, time.UTC),
+			Reactions: struct {
+				Likes    int `json:"likes"`
+				Dislikes int `json:"dislikes"`
+			}{Likes: 1, Dislikes: 0},
+			Saved: false,
+		},
+		{
+			ID:        "4",
+			Role:      "assistant",
+			Content:   "Code splitting in React can be implemented using dynamic imports and React.lazy(). Here's a basic example:\n\n```jsx\nconst MyComponent = React.lazy(() => import('./MyComponent'));\n\nfunction App() {\n  return (\n    <Suspense fallback={<Loading />}> \n      <MyComponent />\n    </Suspense>\n  );\n}\n```\n\nThis will load MyComponent only when it's needed. Would you like to see more advanced patterns?",
+			Timestamp: time.Date(2024, 3, 11, 15, 46, 0, 0, time.UTC),
+			Reactions: struct {
+				Likes    int `json:"likes"`
+				Dislikes int `json:"dislikes"`
+			}{Likes: 4, Dislikes: 0},
+			Saved: true,
+		},
+	}
+
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }

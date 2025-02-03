@@ -23,6 +23,10 @@ func (p *PGVector) Insert(vectors [][]float64, ids []string, payloads []map[stri
 func (p *PGVector) Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
 	return nil, errors.New("PGVector.Search not implemented")
 }
+
+func (p *PGVector) SearchWithThreshold(query []float32, limit int, filters map[string]interface{}, scoreThreshold float32) ([]SearchResult, error) {
+	return nil, errors.New("PGVector.Search not implemented")
+}
 func (p *PGVector) Get(vectorID string) (*qdrant.RetrievedPoint, error) {
 	return nil, errors.New("PGVector.Get not implemented")
 }

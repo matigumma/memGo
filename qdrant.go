@@ -215,6 +215,51 @@ func (q *Qdrant) Search(query []float32, limit int, filters map[string]interface
 	return searchResults, nil
 }
 
+func (q *Qdrant) SearchWithThreshold(query []float32, limit int, filters map[string]interface{}, scoreThreshold float32) ([]SearchResult, error) {
+	limite := uint64(limit)
+
+	qdrantFilters := q._createFilter(filters)
+
+	// Create search points
+	searchPoints := &qdrant.QueryPoints{
+		CollectionName: q.config["collection_name"].(string),
+		Query:          qdrant.NewQuery(query...),
+		Limit:          &limite,
+		Filter:         qdrantFilters,
+		WithPayload:    qdrant.NewWithPayload(true),
+		ScoreThreshold: Float32Ptr(scoreThreshold), // coincidencia con un minimo del ultimo decil
+		// Payload and vector in the result:
+		// WithVectors:    qdrant.NewWithVectors(true),
+	}
+	// Add filter if provided
+	if filters != nil {
+		// Convert filters to Qdrant filter format
+		// Note: You'll need to implement _createFilter helper method
+		// to convert the filters map to Qdrant filter structure
+		filter := q._createFilter(filters)
+		searchPoints.Filter = filter
+		// fmt.Println("Filter:", filter)
+	}
+
+	// Perform the search
+	results, err := q.client.Query(context.Background(), searchPoints)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search vectors: %w", err)
+	}
+
+	// Convert results to SearchResult format
+	searchResults := make([]SearchResult, len(results))
+	for i, hit := range results {
+		searchResults[i] = SearchResult{
+			ID:      hit.Id.String(),
+			Score:   float64(hit.Score),
+			Payload: convertQdrantPayload(hit.Payload),
+		}
+	}
+
+	return searchResults, nil
+}
+
 // Add this helper function
 func convertQdrantPayload(payload map[string]*qdrant.Value) map[string]interface{} {
 	result := make(map[string]interface{})

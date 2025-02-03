@@ -23,6 +23,9 @@ func (c *ChromaDB) Insert(vectors [][]float64, ids []string, payloads []map[stri
 func (c *ChromaDB) Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error) {
 	return nil, errors.New("ChromaDB.Search not implemented")
 }
+func (c *ChromaDB) SearchWithThreshold(query []float32, limit int, filters map[string]interface{}, scoreThreshold float32) ([]SearchResult, error) {
+	return nil, errors.New("ChromaDB.SearchWithThreshold not implemented")
+}
 func (c *ChromaDB) Get(vectorID string) (*qdrant.RetrievedPoint, error) {
 	return nil, errors.New("ChromaDB.Get not implemented")
 }

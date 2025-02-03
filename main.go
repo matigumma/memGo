@@ -673,7 +673,7 @@ func (m *Memory) GetAll(userID *string, agentID *string, runID *string, limit in
 }
 
 // Search searches for memories
-func (m *Memory) Search(query string, userID *string, agentID *string, runID *string, limit int, filters map[string]interface{}) ([]map[string]interface{}, error) {
+func (m *Memory) Search(query string, userID *string, agentID *string, runID *string, limit int, filters map[string]interface{}, scoreThreshold *float32) ([]map[string]interface{}, error) {
 	if filters == nil {
 		filters = make(map[string]interface{})
 	}
@@ -693,7 +693,12 @@ func (m *Memory) Search(query string, userID *string, agentID *string, runID *st
 		return nil, fmt.Errorf("error embedding query: %w", err)
 	}
 
-	memories, err := m.vectorStore.Search(embeddings32, limit, filters)
+	var memories []SearchResult // Declare memories here
+	if scoreThreshold != nil {
+		memories, err = m.vectorStore.SearchWithThreshold(embeddings32, limit, filters, *scoreThreshold)
+	} else {
+		memories, err = m.vectorStore.Search(embeddings32, limit, filters)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error searching vector store: %w", err)
 	}

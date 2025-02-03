@@ -11,6 +11,7 @@ import (
 type VectorStore interface {
 	Insert(vectors [][]float64, ids []string, payloads []map[string]interface{}) error
 	Search(query []float32, limit int, filters map[string]interface{}) ([]SearchResult, error)
+	SearchWithThreshold(query []float32, limit int, filters map[string]interface{}, scoreThreshold float32) ([]SearchResult, error)
 	Get(vectorID string) (*qdrant.RetrievedPoint, error)
 	List(filters map[string]interface{}, limit int) ([][]SearchResult, error)
 	Update(vectorID string, vector []float32, payload map[string]interface{}) error
